@@ -15,10 +15,7 @@ namespace osmp
 
 		xml::XMLError result = elem->QueryStringAttribute(name.c_str(), &buffer);
 		if (FAILED(result))
-		{
-			std::cerr << "Failed to fetch string attribute \"" << name << "\"" << std::endl;
 			return "";
-		}
 
 		std::string returnStr(buffer);
 		return returnStr;
@@ -29,8 +26,6 @@ namespace osmp
 		float returnVal = 0.0f;
 
 		xml::XMLError result = elem->QueryFloatAttribute(name.c_str(), &returnVal);
-		if (FAILED(result))
-			std::cerr << "Failed to fetch float attribute \"" << name << "\"" << std::endl;
 
 		return returnVal;
 	}
@@ -40,8 +35,6 @@ namespace osmp
 		unsigned int returnVal = 0;
 
 		xml::XMLError result = elem->QueryUnsignedAttribute(name.c_str(), &returnVal);
-		if (FAILED(result))
-			std::cerr << "Failed to fetch uint attribute \"" << name << "\"" << std::endl;
 
 		return returnVal;
 	}
@@ -51,8 +44,6 @@ namespace osmp
 		bool returnVal = false;
 
 		xml::XMLError result = elem->QueryBoolAttribute(name.c_str(), &returnVal);
-		if (FAILED(result))
-			std::cerr << "Failed to fetch bool attribute \"" << name << "\"" << std::endl;
 
 		return returnVal;
 	}

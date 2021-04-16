@@ -1,5 +1,6 @@
 #pragma once
 #include <string>
+#include <memory>
 #include <map>
 #include <vector>
 
@@ -9,6 +10,7 @@ namespace osmp
 {
 	class Node;
 	class Way;
+	class Relation;
 
 	class Object
 	{
@@ -16,13 +18,17 @@ namespace osmp
 		Object(const std::string& file);
 		~Object();
 
-		std::vector<Node*> GetNodes() const;
+		std::vector<std::shared_ptr<Node>> GetNodes() const;
 		size_t GetNodesSize() const;
-		const Node* GetNode(unsigned int id) const;
+		std::shared_ptr<Node> GetNode(unsigned int id) const;
 
-		std::vector<Way*> GetWays() const;
+		std::vector<std::shared_ptr<Way>> GetWays() const;
 		size_t GetWaysSize() const;
-		const Way* GetWay(unsigned int id) const;
+		std::shared_ptr<Way> GetWay(unsigned int id) const;
+
+		std::vector<std::shared_ptr<Relation>> GetRelations() const;
+		size_t GetRelationsSize() const;
+		std::shared_ptr<Relation> GetRelation(unsigned int id) const;
 
 	public:
 		const std::string version;
@@ -31,7 +37,8 @@ namespace osmp
 		Bounds bounds;
 		
 	private:
-		std::map<unsigned int, Node*> nodes;
-		std::map<unsigned int, Way*> ways;
+		std::map<unsigned int, std::shared_ptr<Node>> nodes;
+		std::map<unsigned int, std::shared_ptr<Way>> ways;
+		std::map<unsigned int, std::shared_ptr<Relation>> relations;
 	};
 }

@@ -1,23 +1,20 @@
 #include <osmway.hpp>
 
+#include <string>
+
 #include <tinyxml2.h>
 #include <osmobject.hpp>
+#include <osmtag.hpp>
 
 namespace xml = tinyxml2;
 
 namespace osmp
 {
 	Way::Way(const tinyxml2::XMLElement* way_elem, Object* parent) :
-		parent(parent)
+		IMember(way_elem, parent, IMember::Type::WAY)
 	{
-		// Attributes
-		id =		GetSafeAttributeUint(way_elem, "id");
-		user =		GetSafeAttributeString(way_elem, "user");
-		uid =		GetSafeAttributeUint(way_elem, "uid");
-		visible =	GetSafeAttributeBool(way_elem, "visible");
-		version =	GetSafeAttributeString(way_elem, "version");
-		changeset = GetSafeAttributeUint(way_elem, "changeset");
-		timestamp = GetSafeAttributeString(way_elem, "timestamp");
+		area = GetSafeAttributeBool(way_elem, "area");
+		closed = false;
 
 		const xml::XMLElement* nd_elem = way_elem->FirstChildElement("nd");
 		while (nd_elem != nullptr)
@@ -28,35 +25,17 @@ namespace osmp
 
 			nd_elem = nd_elem->NextSiblingElement("nd");
 		}
-
-		const xml::XMLElement* tag_elem = way_elem->FirstChildElement("tag");
-		while (tag_elem != nullptr)
+		
+		if (nodes.front() == nodes.back())
 		{
-			tags.push_back({
-				GetSafeAttributeString(tag_elem, "k"),
-				GetSafeAttributeString(tag_elem, "v")
-			});
+			closed = true;
 
-			tag_elem = tag_elem->NextSiblingElement("tag");
+			if (!area && GetTag("barrier") == "" && GetTag("highway") == "")	// this code sucks, it can be done better
+				area = true;
 		}
 	}
 
-	const std::vector<Tag>& Way::GetTags() const
-	{
-		return tags;
-	}
-
-	size_t Way::GetTagsSize() const
-	{
-		return tags.size();
-	}
-
-	const Tag& Way::GetTag(size_t index) const
-	{
-		return tags[index];
-	}
-
-	const std::vector<const Node*>& Way::GetNodes() const
+	const std::vector<std::shared_ptr<Node>>& Way::GetNodes() const
 	{
 		return nodes;
 	}
@@ -66,8 +45,8 @@ namespace osmp
 		return nodes.size();
 	}
 
-	const Node& Way::GetNode(size_t index) const
+	const std::shared_ptr<Node>& Way::GetNode(size_t index) const
 	{
-		return *(nodes[index]);
+		return nodes[index];
 	}
 }
