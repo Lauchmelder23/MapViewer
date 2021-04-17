@@ -15,34 +15,26 @@ namespace osmp
 
 		xml::XMLError result = elem->QueryStringAttribute(name.c_str(), &buffer);
 		if (FAILED(result))
-		{
-			std::cerr << "Failed to fetch string attribute \"" << name << "\"" << std::endl;
 			return "";
-		}
 
 		std::string returnStr(buffer);
 		return returnStr;
 	}
 
-	float GetSafeAttributeFloat(const tinyxml2::XMLElement* elem, const std::string& name)
+	double GetSafeAttributeFloat(const tinyxml2::XMLElement* elem, const std::string& name)
 	{
-		float returnVal = 0.0f;
+		double returnVal = 0.0f;
 
-		xml::XMLError result = elem->QueryFloatAttribute(name.c_str(), &returnVal);
-		if (FAILED(result))
-			std::cerr << "Failed to fetch float attribute \"" << name << "\"" << std::endl;
+		xml::XMLError result = elem->QueryDoubleAttribute(name.c_str(), &returnVal);
 
 		return returnVal;
 	}
 
-	unsigned int GetSafeAttributeUint(const tinyxml2::XMLElement* elem, const std::string& name)
+	uint64_t GetSafeAttributeUint64(const tinyxml2::XMLElement* elem, const std::string& name)
 	{
-		unsigned int returnVal = 0;
+		uint64_t returnVal = 0;
 
-		xml::XMLError result = elem->QueryUnsignedAttribute(name.c_str(), &returnVal);
-		if (FAILED(result))
-			std::cerr << "Failed to fetch uint attribute \"" << name << "\"" << std::endl;
-
+		xml::XMLError result = elem->QueryUnsigned64Attribute(name.c_str(), &returnVal);
 		return returnVal;
 	}
 
@@ -51,8 +43,6 @@ namespace osmp
 		bool returnVal = false;
 
 		xml::XMLError result = elem->QueryBoolAttribute(name.c_str(), &returnVal);
-		if (FAILED(result))
-			std::cerr << "Failed to fetch bool attribute \"" << name << "\"" << std::endl;
 
 		return returnVal;
 	}

@@ -1,39 +1,29 @@
 #pragma once
 #include <vector>
+#include <memory>
 
 #include <util.hpp>
+#include <osmtag.hpp>
+#include <osmimember.hpp>
 
 namespace osmp
 {
 	class Object;
 	class Node;
 
-	class Way
+	class Way : public IMember
 	{
 	public:
 		Way(const tinyxml2::XMLElement* way_elem, Object* parent);
 
-		const std::vector<Tag>& GetTags() const;
-		size_t GetTagsSize() const;
-		const Tag& GetTag(size_t index) const;
-
-		const std::vector<const Node*>& GetNodes() const;
+		const std::vector<std::shared_ptr<Node>>& GetNodes() const;
 		size_t GetNodesSize() const;
-		const Node& GetNode(size_t index) const;
+		const std::shared_ptr<Node>& GetNode(size_t index) const;
 
 	public:
-		unsigned int id;
-		std::string user;
-		unsigned int uid;
-		bool visible;
-		std::string version;
-		unsigned int changeset;
-		std::string timestamp;
+		bool area, closed;	// Closed := Startpoint = endpoint, Area := Closed AND certain conditions are not met
 
 	private:
-		Object* parent;
-
-		std::vector<const Node*> nodes;
-		std::vector<Tag> tags;
+		std::vector<std::shared_ptr<Node>> nodes;
 	};
 }
