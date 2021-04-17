@@ -74,7 +74,7 @@ namespace osmp
 	std::vector<std::shared_ptr<Node>> Object::GetNodes() const
 	{
 		std::vector<std::shared_ptr<Node>> vecNodes;
-		for (std::map<unsigned int, std::shared_ptr<Node>>::const_iterator it = nodes.begin(); it != nodes.end(); it++)
+		for (std::map<uint64_t, std::shared_ptr<Node>>::const_iterator it = nodes.begin(); it != nodes.end(); it++)
 			vecNodes.push_back(it->second);
 
 		return vecNodes;
@@ -85,9 +85,9 @@ namespace osmp
 		return nodes.size();
 	}
 
-	std::shared_ptr<Node> Object::GetNode(unsigned int id) const
+	std::shared_ptr<Node> Object::GetNode(uint64_t id) const
 	{
-		std::map<unsigned int, std::shared_ptr<Node>>::const_iterator node = nodes.find(id);
+		std::map<uint64_t, std::shared_ptr<Node>>::const_iterator node = nodes.find(id);
 		if (node != nodes.end())
 			return node->second;
 
@@ -97,7 +97,7 @@ namespace osmp
 	std::vector<std::shared_ptr<Way>> Object::GetWays() const
 	{
 		std::vector<std::shared_ptr<Way>> vecWays;
-		for (std::map<unsigned int, std::shared_ptr<Way>>::const_iterator it = ways.begin(); it != ways.end(); it++)
+		for (std::map<uint64_t, std::shared_ptr<Way>>::const_iterator it = ways.begin(); it != ways.end(); it++)
 			vecWays.push_back(it->second);
 
 		return vecWays;
@@ -108,9 +108,9 @@ namespace osmp
 		return ways.size();
 	}
 
-	std::shared_ptr<Way> Object::GetWay(unsigned int id) const
+	std::shared_ptr<Way> Object::GetWay(uint64_t id) const
 	{
-		std::map<unsigned int, std::shared_ptr<Way>>::const_iterator way = ways.find(id);
+		std::map<uint64_t, std::shared_ptr<Way>>::const_iterator way = ways.find(id);
 		if (way != ways.end())
 			return way->second;
 
@@ -120,7 +120,7 @@ namespace osmp
 	std::vector<std::shared_ptr<Relation>> Object::GetRelations() const
 	{
 		std::vector<std::shared_ptr<Relation>> vecRelations;
-		for (std::map<unsigned int, std::shared_ptr<Relation>>::const_iterator it = relations.begin(); it != relations.end(); it++)
+		for (std::map<uint64_t, std::shared_ptr<Relation>>::const_iterator it = relations.begin(); it != relations.end(); it++)
 			vecRelations.push_back(it->second);
 
 		return vecRelations;
@@ -131,9 +131,9 @@ namespace osmp
 		return relations.size();
 	}
 
-	std::shared_ptr<Relation> Object::GetRelation(unsigned int id) const
+	std::shared_ptr<Relation> Object::GetRelation(uint64_t id) const
 	{
-		std::map<unsigned int, std::shared_ptr<Relation>>::const_iterator relation = relations.find(id);
+		std::map<uint64_t, std::shared_ptr<Relation>>::const_iterator relation = relations.find(id);
 		if (relation != relations.end())
 			return relation->second;
 

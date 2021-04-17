@@ -40,7 +40,7 @@ namespace osmp
 		// std::map<std::string, std::string> tags;
 		
 	public:
-		unsigned int id;
+		uint64_t id;
 		std::string user;
 		unsigned int uid;
 		bool visible;

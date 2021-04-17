@@ -21,21 +21,20 @@ namespace osmp
 		return returnStr;
 	}
 
-	float GetSafeAttributeFloat(const tinyxml2::XMLElement* elem, const std::string& name)
+	double GetSafeAttributeFloat(const tinyxml2::XMLElement* elem, const std::string& name)
 	{
-		float returnVal = 0.0f;
+		double returnVal = 0.0f;
 
-		xml::XMLError result = elem->QueryFloatAttribute(name.c_str(), &returnVal);
+		xml::XMLError result = elem->QueryDoubleAttribute(name.c_str(), &returnVal);
 
 		return returnVal;
 	}
 
-	unsigned int GetSafeAttributeUint(const tinyxml2::XMLElement* elem, const std::string& name)
+	uint64_t GetSafeAttributeUint64(const tinyxml2::XMLElement* elem, const std::string& name)
 	{
-		unsigned int returnVal = 0;
+		uint64_t returnVal = 0;
 
-		xml::XMLError result = elem->QueryUnsignedAttribute(name.c_str(), &returnVal);
-
+		xml::XMLError result = elem->QueryUnsigned64Attribute(name.c_str(), &returnVal);
 		return returnVal;
 	}
 

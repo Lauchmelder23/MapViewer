@@ -18,7 +18,7 @@ namespace osmp
 		while (member_element != nullptr)
 		{
 			std::string memberType = GetSafeAttributeString(member_element, "type");
-			unsigned int ref = GetSafeAttributeUint(member_element, "ref");
+			uint64_t ref = GetSafeAttributeUint64(member_element, "ref");
 			std::string role = GetSafeAttributeString(member_element, "role");
 
 			std::shared_ptr<IMember> member = nullptr;

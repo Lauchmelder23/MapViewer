@@ -15,6 +15,6 @@ namespace osmp
 		Node(const tinyxml2::XMLElement* xml, Object* parent);
 
 	public:
-		float lat, lon;
+		double lat, lon;
 	};
 }

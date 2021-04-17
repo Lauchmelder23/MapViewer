@@ -20,7 +20,7 @@ namespace osmp
 		while (nd_elem != nullptr)
 		{
 			nodes.push_back(
-				parent->GetNode(GetSafeAttributeUint(nd_elem, "ref"))
+				parent->GetNode(GetSafeAttributeUint64(nd_elem, "ref"))
 			);
 
 			nd_elem = nd_elem->NextSiblingElement("nd");

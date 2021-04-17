@@ -8,6 +8,8 @@ file(GLOB_RECURSE HPP_FILES
 	"include/*.h"
 )
 
+SET_SOURCE_FILES_PROPERTIES( ${CPP_FILES} PROPERTIES LANGUAGE CXX )
+
 add_library(triangle STATIC 
 	${CPP_FILES} ${HPP_FILES}
 )

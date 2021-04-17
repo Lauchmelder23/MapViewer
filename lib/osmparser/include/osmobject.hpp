@@ -20,15 +20,15 @@ namespace osmp
 
 		std::vector<std::shared_ptr<Node>> GetNodes() const;
 		size_t GetNodesSize() const;
-		std::shared_ptr<Node> GetNode(unsigned int id) const;
+		std::shared_ptr<Node> GetNode(uint64_t id) const;
 
 		std::vector<std::shared_ptr<Way>> GetWays() const;
 		size_t GetWaysSize() const;
-		std::shared_ptr<Way> GetWay(unsigned int id) const;
+		std::shared_ptr<Way> GetWay(uint64_t id) const;
 
 		std::vector<std::shared_ptr<Relation>> GetRelations() const;
 		size_t GetRelationsSize() const;
-		std::shared_ptr<Relation> GetRelation(unsigned int id) const;
+		std::shared_ptr<Relation> GetRelation(uint64_t id) const;
 
 	public:
 		const std::string version;
@@ -37,8 +37,8 @@ namespace osmp
 		Bounds bounds;
 		
 	private:
-		std::map<unsigned int, std::shared_ptr<Node>> nodes;
-		std::map<unsigned int, std::shared_ptr<Way>> ways;
-		std::map<unsigned int, std::shared_ptr<Relation>> relations;
+		std::map<uint64_t, std::shared_ptr<Node>> nodes;
+		std::map<uint64_t, std::shared_ptr<Way>> ways;
+		std::map<uint64_t, std::shared_ptr<Relation>> relations;
 	};
 }

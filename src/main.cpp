@@ -259,6 +259,10 @@ int main(int argc, char** argv)
 			SDL_SetRenderDrawColor(renderer, railway.r, railway.g, railway.b, 255);
 			SDL_RenderDrawLinesF(renderer, railway.points, railway.length);
 		}
+
+		for (Multipolygon& multipolygon : multipolygons) {
+			multipolygon.Draw(renderer, 255, 0, 0);
+		}
 		
 
 		SDL_RenderPresent(renderer);

@@ -11,12 +11,12 @@ namespace osmp
 		type(type), parent(parent)
 	{
 		// Get Attribute
-		id = GetSafeAttributeUint(element, "id");
+		id = GetSafeAttributeUint64(element, "id");
 		user = GetSafeAttributeString(element, "user");
-		uid = GetSafeAttributeUint(element, "uid");
+		uid = GetSafeAttributeUint64(element, "uid");
 		visible = GetSafeAttributeBool(element, "visible");
 		version = GetSafeAttributeString(element, "version");
-		changeset = GetSafeAttributeUint(element, "changeset");
+		changeset = GetSafeAttributeUint64(element, "changeset");
 		timestamp = GetSafeAttributeString(element, "timestamp");
 
 		const xml::XMLElement* tag_element = element->FirstChildElement("tag");
