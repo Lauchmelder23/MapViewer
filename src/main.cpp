@@ -1,6 +1,7 @@
 #include <iostream>
 #include <vector>
 #include <string>
+#include <algorithm>
 
 #include <osmp.hpp>
 #include <SDL.h>
@@ -9,13 +10,6 @@
 
 // Map values from one interval [A, B] to another [a, b]
 inline float Map(float A, float B, float a, float b, float x);
-
-// A structure to hold a sequence of 2D points
-typedef struct sRenderableWay
-{
-	size_t length;
-	SDL_FPoint* points;
-} RenderableWay;
 
 typedef struct sArea
 {
@@ -47,10 +41,8 @@ int main(int argc, char** argv)
 	std::vector<std::shared_ptr<osmp::Way>> ways = obj->GetWays();
 
 	// Turn them into renderable ways by mapping the global coordinates to screen coordinates (do this smarter in the future pls)
-	std::vector<RenderableWay> rWays;
-	std::vector<Area> areas;
+	std::vector<Area> buildings;
 	std::vector<Highway> highways;
-	std::vector<Highway> railways;
 	for (std::shared_ptr<osmp::Way> way : ways)
 	{
 		const std::vector<std::shared_ptr<osmp::Node>>& nodes = way->GetNodes();
@@ -58,10 +50,19 @@ int main(int argc, char** argv)
 		std::string railwayVal = way->GetTag("railway");
 		if (way->area)
 		{
+			if (way->GetTag("building") == "")
+			{
+				continue;
+			}
+
 			Area area;
 			area.length = nodes.size();
 			area.x = new Sint16[area.length];
 			area.y = new Sint16[area.length];
+
+			area.r = 150;
+			area.g = 150;
+			area.b = 150;
 
 			for (int i = 0; i < area.length; i++)
 			{
@@ -69,61 +70,7 @@ int main(int argc, char** argv)
 				area.y[i] = windowHeight - Map(bounds.minlat, bounds.maxlat, 0, windowHeight, nodes[i]->lat);
 			}
 
-
-			std::string tag = "";
-			tag = way->GetTag("building");
-			if (tag != "")
-			{
-				area.r = 100;
-				area.g = 100;
-				area.b = 100;
-			}
-
-			tag = way->GetTag("natural");
-			if (tag != "")
-			{
-				if (tag == "wood" || tag == "scrub" || tag == "heath") {
-					area.r = 47;
-					area.g = 157;
-					area.b = 0;
-				}
-				else if (tag == "water" || tag == "floodplain") {
-					area.r = 106;
-					area.g = 151;
-					area.b = 255;
-				}
-				else if (tag == "grassland" || tag == "grass") {
-					area.r = 143;
-					area.g = 255;
-					area.b = 106;
-				}
-				else if (tag == "sand") {
-					area.r = 244;
-					area.g = 255;
-					area.b = 106;
-				}
-				else {
-					std::cout << "Unknown natural: " << tag << std::endl;
-				}
-			}
-
-			tag = way->GetTag("water");
-			if (tag != "")
-			{
-				area.r = 106;
-				area.g = 151;
-				area.b = 255;
-			}
-
-			tag = way->GetTag("waterway");
-			if (tag != "")
-			{
-				area.r = 106;
-				area.g = 151;
-				area.b = 255;
-			}
-
-			areas.push_back(area);
+			buildings.push_back(area);
 		}
 		else if (highwayVal != "")
 		{
@@ -142,7 +89,8 @@ int main(int argc, char** argv)
 			else if (highwayVal == "primary") { highway.r = 252; highway.g = 206; highway.b = 144; }
 			else if (highwayVal == "secondary") { highway.r = 244; highway.g = 251; highway.b = 173; }
 			else if (highwayVal == "tertiary") { highway.r = 244; highway.g = 244; highway.b = 250; }
-			else { highway.r = 244; highway.g = 244; highway.b = 250; }
+			else if (highwayVal == "footway") { highway.r = 233; highway.g = 140; highway.b = 124; }
+			else { highway.r = 15; highway.g = 15; highway.b = 20; }
 
 			highways.push_back(highway);
 		}
@@ -162,20 +110,6 @@ int main(int argc, char** argv)
 
 			highways.push_back(railway);
 		}
-		else
-		{
-			RenderableWay rWay;
-			rWay.length = nodes.size();
-			rWay.points = new SDL_FPoint[rWay.length];
-
-			for (int i = 0; i < rWay.length; i++)
-			{
-				rWay.points[i].x = Map(bounds.minlon, bounds.maxlon, 0, windowWidth, nodes[i]->lon);
-				rWay.points[i].y = windowHeight - Map(bounds.minlat, bounds.maxlat, 0, windowHeight, nodes[i]->lat);
-			}
-
-			rWays.push_back(rWay);
-		}
 	}
 
 	// Fetch all relations
@@ -190,8 +124,12 @@ int main(int argc, char** argv)
 		}
 	}
 
+	std::sort(multipolygons.begin(), multipolygons.end());
+
 
 	// Release map data
+	relations.clear();
+	ways.clear();
 	delete obj;
 
 	// Initiaize graphics API
@@ -230,38 +168,22 @@ int main(int argc, char** argv)
 			}
 		}
 
-		SDL_SetRenderDrawColor(renderer, 0, 0, 10, 255);
+		SDL_SetRenderDrawColor(renderer, 240, 240, 250, 255);
 		SDL_RenderClear(renderer);
-
-		// Render the ways
-		/*
-		SDL_SetRenderDrawColor(renderer, 255, 245, 245, 255);
-		for (RenderableWay& rWay : rWays)
-		{
-			SDL_RenderDrawLinesF(renderer, rWay.points, rWay.length);
-		}
-		*/
 		
-		for (Area& area : areas)
+		for (Multipolygon& multipolygon : multipolygons) {
+			multipolygon.Draw(renderer);
+		}
+
+		for (Area& area : buildings)
 		{
 			filledPolygonRGBA(renderer, area.x, area.y, area.length, area.r, area.g, area.b, 255);
 		}
-		
 
 		for (Highway& highway : highways)
 		{
 			SDL_SetRenderDrawColor(renderer, highway.r, highway.g, highway.b, 255);
 			SDL_RenderDrawLinesF(renderer, highway.points, highway.length);
-		}
-
-		for (Highway& railway : railways)
-		{
-			SDL_SetRenderDrawColor(renderer, railway.r, railway.g, railway.b, 255);
-			SDL_RenderDrawLinesF(renderer, railway.points, railway.length);
-		}
-
-		for (Multipolygon& multipolygon : multipolygons) {
-			multipolygon.Draw(renderer, 255, 0, 0);
 		}
 		
 
@@ -274,16 +196,13 @@ int main(int argc, char** argv)
 
 	SDL_Quit();
 
-	for (Area& area : areas) {
+	for (Area& area : buildings) {
 		delete[] area.x;
 		delete[] area.y;
 	}
 
 	for (Highway& highway : highways)
 		delete[] highway.points;
-
-	for (RenderableWay& rWay : rWays)
-		delete[] rWay.points;
 
 	return 0;
 }

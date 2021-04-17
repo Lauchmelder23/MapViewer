@@ -12,7 +12,12 @@ class Multipolygon
 public:
 	Multipolygon(const std::shared_ptr<osmp::Relation>& relation, int width, int height, osmp::Bounds bounds);
 
-	void Draw(SDL_Renderer* renderer, int r, int g, int b);
+	void SetColor(int r, int g, int b);
+	void Draw(SDL_Renderer* renderer);
+
+	bool operator < (const Multipolygon& other) const {
+		return (rendering < other.rendering);
+	}
 
 private:
 	struct Vertex {
@@ -21,7 +26,17 @@ private:
 	struct Polygon {
 		std::vector<Vertex> vertices;
 		std::vector<int> indices;
+		std::vector<int> segments;
 	};
 
 	std::vector<Polygon> polygons;
+	int r;
+	int g;
+	int b;
+	bool visible;
+	enum RenderType {
+		FILL,
+		OUTLINE,
+		INDOOR
+	} rendering;
 };
