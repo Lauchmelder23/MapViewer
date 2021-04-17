@@ -30,12 +30,18 @@ typedef struct sHighway
 
 int main(int argc, char** argv)
 {
+	SDL_Init(SDL_INIT_VIDEO);
 	// Load map data and calculate window size
+	SDL_DisplayMode DM;
+	SDL_GetCurrentDisplayMode(0, &DM);
+
+	std::cout << "Loading and parsing OSM XML file. This might take a bit..." << std::flush;
 	osmp::Object* obj = new osmp::Object("leipzig.osm");
+	std::cout << "Done!" << std::endl;
 	osmp::Bounds bounds = obj->bounds;
 	float aspectRatio = (float)(bounds.maxlon - bounds.minlon) / (float)(bounds.maxlat - bounds.minlat);
-	int windowWidth = 2000;
-	int windowHeight = windowWidth / aspectRatio;
+	int windowHeight = DM.h - 100;
+	int windowWidth = windowHeight * aspectRatio;
 
 	// Fetch all the ways
 	std::vector<std::shared_ptr<osmp::Way>> ways = obj->GetWays();
@@ -131,9 +137,6 @@ int main(int argc, char** argv)
 	relations.clear();
 	ways.clear();
 	delete obj;
-
-	// Initiaize graphics API
-	SDL_Init(SDL_INIT_VIDEO);
 
 	// Create Window + Renderer
 	SDL_Window* window = SDL_CreateWindow("MapViewer", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, windowWidth, windowHeight, SDL_WINDOW_SHOWN);
