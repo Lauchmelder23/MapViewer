@@ -33,6 +33,7 @@ private:
 	int r;
 	int g;
 	int b;
+	uint64_t id;
 	bool visible;
 	enum RenderType {
 		FILL,

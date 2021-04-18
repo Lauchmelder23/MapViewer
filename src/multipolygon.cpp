@@ -1,6 +1,8 @@
 #include "..\include\multipolygon.hpp"
 
 #include <vector>
+#include <algorithm>
+#include <map>
 #include <iostream>
 
 #include <triangle.h>
@@ -23,10 +25,13 @@ inline double Map(double A, double B, double a, double b, double x)
 }
 
 Multipolygon::Multipolygon(const std::shared_ptr<osmp::Relation>& relation, int width, int height, osmp::Bounds bounds) :
-	r(255), g(0), b(255), visible(true), rendering(RenderType::FILL)
+	r(255), g(0), b(255), visible(true), rendering(RenderType::FILL), id(relation->id)
 {
 	if (relation->HasNullMembers())
 		return;
+
+	// BREAKIF(7344428);
+	// BREAKIF(6427823);
 
 	std::vector<TriangulationData> data;
 
@@ -43,7 +48,7 @@ Multipolygon::Multipolygon(const std::shared_ptr<osmp::Relation>& relation, int 
 		std::shared_ptr<osmp::Way> way = std::dynamic_pointer_cast<osmp::Way>(member.member);
 		if (member.role == "inner") 
 		{
-			if (hasSeenOuter)	// TODO: Find better way to sort things
+			if (!hasSeenOuter)	// TODO: Find better way to sort things
 				continue;
 
 			if (innerWays.empty() || !lastWasInner)
@@ -140,9 +145,22 @@ Multipolygon::Multipolygon(const std::shared_ptr<osmp::Relation>& relation, int 
 
 			// Push all vertices to data
 			std::vector<REAL> vertices;
+			std::map<int, int> duplicates;
+			int n = td.vertices.size() / 2;
 			for (const std::shared_ptr<osmp::Node>& node : nodes) {
-				vertices.push_back(Map(bounds.minlon, bounds.maxlon, 0, width, node->lon));
-				vertices.push_back(height - Map(bounds.minlat, bounds.maxlat, 0, height, node->lat));
+				double x = Map(bounds.minlon, bounds.maxlon, 0, width, node->lon);
+				double y = height - Map(bounds.minlat, bounds.maxlat, 0, height, node->lat);
+
+				auto xit = std::find(td.vertices.begin(), td.vertices.end(), x);
+				auto yit = std::find(td.vertices.begin(), td.vertices.end(), y);
+				if (std::distance(xit, yit) == 1) {
+					duplicates.insert(std::make_pair(n, std::distance(td.vertices.begin(), xit) / 2));
+				}
+				else {
+					vertices.push_back(x);
+					vertices.push_back(y);
+				}
+				n++;
 			}
 
 			if (inner)
@@ -165,8 +183,25 @@ Multipolygon::Multipolygon(const std::shared_ptr<osmp::Relation>& relation, int 
 			// Get segments
 			int segNum = td.vertices.size() / 2;
 			for (int i = 0; i < vertices.size(); i += 2) {
-				td.segments.push_back(segNum);
-				td.segments.push_back(++segNum);
+				auto dit = duplicates.find(segNum);
+				if (dit != duplicates.end())
+				{
+					td.segments.push_back(dit->second);
+				}
+				else
+				{
+					td.segments.push_back(segNum++);
+				}
+
+				dit = duplicates.find(segNum);
+				if (dit != duplicates.end())
+				{
+					td.segments.push_back(dit->second);
+				}
+				else
+				{
+					td.segments.push_back(segNum);
+				}
 			}
 			td.segments.back() = td.vertices.size() / 2;
 
@@ -623,6 +658,9 @@ void Multipolygon::Draw(SDL_Renderer* renderer)
 {
 	if (!visible)
 		return;
+
+	// if (id != 6427823)
+	//	return;
 
 	for (const Polygon& polygon : polygons) {
 		switch(rendering)

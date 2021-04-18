@@ -178,10 +178,10 @@ int main(int argc, char** argv)
 			multipolygon.Draw(renderer);
 		}
 
-		for (Area& area : buildings)
-		{
-			filledPolygonRGBA(renderer, area.x, area.y, area.length, area.r, area.g, area.b, 255);
-		}
+		//for (Area& area : buildings)
+		//{
+		//	filledPolygonRGBA(renderer, area.x, area.y, area.length, area.r, area.g, area.b, 255);
+		//}
 
 		for (Highway& highway : highways)
 		{
