@@ -15,20 +15,20 @@ namespace osmp
 	class Object
 	{
 	public:
-		Object(const std::string& file);
+		explicit Object(const std::string& file);
 		~Object();
 
-		std::vector<std::shared_ptr<Node>> GetNodes() const;
-		size_t GetNodesSize() const;
-		std::shared_ptr<Node> GetNode(uint64_t id) const;
+		[[nodiscard]] std::vector<std::shared_ptr<Node>> GetNodes() const;
+		[[nodiscard]] size_t GetNodesSize() const;
+		[[nodiscard]] std::shared_ptr<Node> GetNode(uint64_t id) const;
 
-		std::vector<std::shared_ptr<Way>> GetWays() const;
-		size_t GetWaysSize() const;
-		std::shared_ptr<Way> GetWay(uint64_t id) const;
+		[[nodiscard]] std::vector<std::shared_ptr<Way>> GetWays() const;
+		[[nodiscard]] size_t GetWaysSize() const;
+		[[nodiscard]] std::shared_ptr<Way> GetWay(uint64_t id) const;
 
-		std::vector<std::shared_ptr<Relation>> GetRelations() const;
-		size_t GetRelationsSize() const;
-		std::shared_ptr<Relation> GetRelation(uint64_t id) const;
+		[[nodiscard]] std::vector<std::shared_ptr<Relation>> GetRelations() const;
+		[[nodiscard]] size_t GetRelationsSize() const;
+		[[nodiscard]] std::shared_ptr<Relation> GetRelation(uint64_t id) const;
 
 	public:
 		const std::string version;

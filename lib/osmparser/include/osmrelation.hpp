@@ -21,17 +21,17 @@ namespace osmp
 	public:
 		Relation(const tinyxml2::XMLElement* xml, Object* parent);
 
-		std::string GetRelationType();
+		[[nodiscard]] std::string GetRelationType();
 
-		const std::vector<Member>& GetNodes() const;
-		size_t GetNodesSize() const;
-		const Member& GetNode(size_t index) const;
+		[[nodiscard]] const std::vector<Member>& GetNodes() const;
+		[[nodiscard]] size_t GetNodesSize() const;
+		[[nodiscard]] const Member& GetNode(size_t index) const;
 
-		const std::vector<Member>& GetWays() const;
-		size_t GetWaysSize() const;
-		const Member& GetWay(size_t index) const;
+		[[nodiscard]] const std::vector<Member>& GetWays() const;
+		[[nodiscard]] size_t GetWaysSize() const;
+		[[nodiscard]] const Member& GetWay(size_t index) const;
 
-		bool HasNullMembers() const { return hasNullMembers; }
+		[[nodiscard]] bool HasNullMembers() const { return hasNullMembers; }
 
 	private:
 		std::string relationType;

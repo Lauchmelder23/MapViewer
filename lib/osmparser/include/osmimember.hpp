@@ -22,12 +22,12 @@ namespace osmp
 		IMember(const IMember& other) = delete;
 		virtual ~IMember() {}
 
-		IMember::Type GetType() const;
+		[[nodiscard]] IMember::Type GetType() const;
 
-		const std::vector<Tag>& GetTags() const;
-		size_t GetTagsSize() const;
-		const Tag& GetTag(size_t index) const;
-		std::string GetTag(const std::string& key) const;
+		[[nodiscard]] const std::vector<Tag>& GetTags() const;
+		[[nodiscard]] size_t GetTagsSize() const;
+		[[nodiscard]] const Tag& GetTag(size_t index) const;
+		[[nodiscard]] std::string GetTag(const std::string& key) const;
 
 	protected:
 		IMember(const tinyxml2::XMLElement* element, Object* parent, IMember::Type type);

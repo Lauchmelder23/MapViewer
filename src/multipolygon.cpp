@@ -18,10 +18,64 @@ struct TriangulationData {
 	std::vector<int> segments;
 };
 
+struct Ring {
+	std::vector<osmp::Relation::Member> members;
+	int ring;
+};
+
 // Map values from one interval [A, B] to another [a, b]
 inline double Map(double A, double B, double a, double b, double x)
 {
 	return (x - A) * (b - a) / (B - A) + a;
+}
+
+// TODO: Implement better algorithm
+bool SelfIntersecting(const Ring & ring)
+{
+	struct Segment {
+		std::shared_ptr<osmp::Node> p1, p2;
+	};
+	
+	// Get all segments
+	std::vector<Segment> segments;
+	for (const osmp::Relation::Member member : ring.members)
+	{
+		std::vector<std::shared_ptr<osmp::Node>> nodes = std::dynamic_pointer_cast<osmp::Way>(member.member)->GetNodes();
+		for (auto it = nodes.begin(); it != nodes.end() - 1; it++)
+		{
+			segments.push_back({
+				*it, *(it + 1)
+			});
+		}
+	}
+
+	// Check for self intersection (O(n^2)...)
+	for (auto it = segments.begin(); it != segments.end(); it++)
+	{
+		for (auto jt = segments.begin(); jt != segments.end(); jt++)
+		{
+			if (it == jt) continue;
+
+			double A1 = (it->p1->lat - it->p2->lat) / (it->p1->lon - it->p2->lon);
+			double A2 = (jt->p1->lat - jt->p2->lat) / (jt->p1->lon - jt->p2->lon);
+			if (A1 == A2)	// Parallel
+				continue;
+
+			double b1 = it->p1->lat - A1 * it->p1->lon;
+			double b2 = jt->p1->lat - A2 * jt->p1->lon;
+			
+			double Xa = (b2 - b1) / (A1 - A2);
+			double Ya = A1 * Xa + b1;
+
+			if ((Xa < std::max(std::min(it->p1->lon, it->p2->lon), std::min(jt->p1->lon, jt->p2->lon))) ||
+				(Xa > std::min(std::max(it->p1->lon, it->p2->lon), std::max(jt->p1->lon, jt->p2->lon))))
+				continue;
+			else
+				return true;
+		}
+	}
+
+	return false;
 }
 
 Multipolygon::Multipolygon(const std::shared_ptr<osmp::Relation>& relation, int width, int height, osmp::Bounds bounds) :
@@ -30,244 +84,29 @@ Multipolygon::Multipolygon(const std::shared_ptr<osmp::Relation>& relation, int 
 	if (relation->HasNullMembers())
 		return;
 
-	// BREAKIF(7344428);
-	// BREAKIF(6427823);
+	const std::vector<osmp::Relation::Member>& members = relation->GetWays();
 
-	std::vector<TriangulationData> data;
+	// Implement https://wiki.openstreetmap.org/wiki/Relation:multipolygon/Algorithm
+	// Ring assignment
 
-	std::vector<osmp::Relation::Member> ways = relation->GetWays();
-	std::vector<std::shared_ptr<osmp::Node>> nodes;
-	int run = 1;
+	// RA-1
+	std::vector<Ring> rings;
+	int ringCount = 0;
 
-	bool lastWasInner = false;
-	bool hasSeenOuter = false;
-	std::vector<std::vector<osmp::Relation::Member>> outerWays;
-	std::vector<std::vector<osmp::Relation::Member>> innerWays;
-	// Pre processing
-	for (osmp::Relation::Member member : ways) {
-		std::shared_ptr<osmp::Way> way = std::dynamic_pointer_cast<osmp::Way>(member.member);
-		if (member.role == "inner") 
+	// RA-2
+	rings.push_back({ {members[0]}, ringCount });
+
+	// RA-3
+	if (rings[ringCount].members.front().member == rings[ringCount].members.back().member)
+	{
+		if (SelfIntersecting(rings[ringCount]))
 		{
-			if (!hasSeenOuter)	// TODO: Find better way to sort things
-				continue;
-
-			if (innerWays.empty() || !lastWasInner)
-				innerWays.push_back({});
-
-			innerWays.back().push_back(member);
-			lastWasInner = true;
-		}
-		else 
-		{
-			hasSeenOuter = true;
-			if (outerWays.empty() || lastWasInner)
-				outerWays.push_back({});
-
-			outerWays.back().push_back(member);
-			lastWasInner = false;
+			// Backtracking ??
 		}
 	}
-
-	if (outerWays.empty())	// There must always be an outer ring, anything else makes no sense
-		return;
-
-	auto jt = outerWays.begin();
-	bool currentIsInner = false;
-	while (!outerWays.empty() || !innerWays.empty())
+	else // RA-4
 	{
-		std::vector<osmp::Relation::Member> member = *jt;
-		auto it = member.begin();
-		while (!member.empty())
-		{
-			if (it == member.end())
-				it = member.begin();
-			std::shared_ptr<osmp::Way> way = std::dynamic_pointer_cast<osmp::Way>(it->member);
 
-			// Several possible scenarios:
-			// Closed way
-			//		Outer edge
-			//			Append all nodes to the triangulation data
-			//		Inner edge
-			//			Append all nodes to the triangulation data
-			//			Calculate average of nodes to get coordinates of the hole
-			//
-			// Open way
-			//		Read next way until way is closed. This MUST happen, if the way remains open the OSM data is faulty and should be discarded
-			//		Continue with Closed way algorithm
-
-			bool inner = (it->role == "inner");
-			std::vector<std::shared_ptr<osmp::Node>> wayNodes = way->GetNodes();
-
-			if (run == 1) {
-				nodes.insert(nodes.begin(), wayNodes.begin(), wayNodes.end());
-			}
-			else {
-				if (nodes.back() == wayNodes.front()) {
-					nodes.insert(nodes.end(), wayNodes.begin() + 1, wayNodes.end());
-				}
-				else if (nodes.back() == wayNodes.back()) {
-					nodes.insert(nodes.end(), wayNodes.rbegin() + 1, wayNodes.rend());
-				}
-				else if (nodes.front() == wayNodes.back()) {
-					nodes.insert(nodes.begin(), wayNodes.begin(), wayNodes.end() - 1);
-				}
-				else if (nodes.front() == wayNodes.front()) {
-					nodes.insert(nodes.begin(), wayNodes.rbegin(), wayNodes.rend() - 1);
-				}
-				else {
-					it++;
-					continue;
-				}
-			}
-
-			it = member.erase(it);
-
-			run++;
-
-			if (!(way->closed)) {
-				if (nodes.size() > 1 && nodes.front() == nodes.back())
-				{
-					// nodes.pop_back();
-				}
-				else
-				{
-					continue;
-				}
-			}
-
-			nodes.pop_back();
-
-			if (!inner || data.empty())
-			{
-				data.push_back({});
-			}
-			TriangulationData& td = data.back();
-
-			// Push all vertices to data
-			std::vector<REAL> vertices;
-			std::map<int, int> duplicates;
-			int n = td.vertices.size() / 2;
-			for (const std::shared_ptr<osmp::Node>& node : nodes) {
-				double x = Map(bounds.minlon, bounds.maxlon, 0, width, node->lon);
-				double y = height - Map(bounds.minlat, bounds.maxlat, 0, height, node->lat);
-
-				auto xit = std::find(td.vertices.begin(), td.vertices.end(), x);
-				auto yit = std::find(td.vertices.begin(), td.vertices.end(), y);
-				if (std::distance(xit, yit) == 1) {
-					duplicates.insert(std::make_pair(n, std::distance(td.vertices.begin(), xit) / 2));
-				}
-				else {
-					vertices.push_back(x);
-					vertices.push_back(y);
-				}
-				n++;
-			}
-
-			if (inner)
-			{
-				// Calculate data of hole by using the average position of all inner vertices (that should work right?, probably not...)
-				REAL holeX = 0.0f;
-				REAL holeY = 0.0f;;
-				for (int i = 0; i < vertices.size(); i += 2)
-				{
-					holeX += vertices[i];
-					holeY += vertices[i + 1];
-				}
-				holeX /= (vertices.size() / 2);
-				holeY /= (vertices.size() / 2);
-
-				td.holes.push_back(holeX);
-				td.holes.push_back(holeY);
-			}
-
-			// Get segments
-			int segNum = td.vertices.size() / 2;
-			for (int i = 0; i < vertices.size(); i += 2) {
-				auto dit = duplicates.find(segNum);
-				if (dit != duplicates.end())
-				{
-					td.segments.push_back(dit->second);
-				}
-				else
-				{
-					td.segments.push_back(segNum++);
-				}
-
-				dit = duplicates.find(segNum);
-				if (dit != duplicates.end())
-				{
-					td.segments.push_back(dit->second);
-				}
-				else
-				{
-					td.segments.push_back(segNum);
-				}
-			}
-			td.segments.back() = td.vertices.size() / 2;
-
-			td.vertices.insert(td.vertices.end(), vertices.begin(), vertices.end());
-			nodes.clear();
-			run = 1;
-		}
-
-		if (currentIsInner) {
-			innerWays.erase(innerWays.begin());
-			jt = outerWays.begin();
-		}
-		else {
-			outerWays.erase(outerWays.begin());
-			jt = innerWays.begin();
-		}
-
-		currentIsInner = !currentIsInner;
-	}
-
-	char* triswitches = "zpNBQ";
-	for (TriangulationData& td : data)
-	{
-		triangulateio in;
-
-		in.numberofpoints = td.vertices.size() / 2;
-		in.pointlist = td.vertices.data();
-		in.pointmarkerlist = NULL;
-		
-		in.numberofpointattributes = 0;
-		in.numberofpointattributes = NULL;
-
-		in.numberofholes = td.holes.size() / 2;
-		in.holelist = td.holes.data();
-
-		in.numberofsegments = td.segments.size() / 2;
-		in.segmentlist = td.segments.data();
-		in.segmentmarkerlist = NULL;
-
-		in.numberofregions = 0;
-		in.regionlist = NULL;
-
-		triangulateio out;
-		out.pointlist = NULL;
-		out.pointmarkerlist = NULL;
-		out.trianglelist = NULL;
-		out.segmentlist = NULL;
-		out.segmentmarkerlist = NULL;
-
-		triangulate(triswitches, &in, &out, NULL);
-
-		// TODO: memory leak go brrrr
-		polygons.push_back({});
-		for (int i = 0; i < in.numberofpoints * 2; i += 2) {
-			polygons.back().vertices.push_back({ in.pointlist[i], in.pointlist[i + 1] });
-			// polygons.back().vertices.push_back(in.pointlist[i + 1]);
-		}
-		for (int i = 0; i < out.numberoftriangles * 3; i++) {
-			polygons.back().indices.push_back(out.trianglelist[i]);
-		}
-		for (int i = 0; i < in.numberofsegments * 2; i++) {
-			polygons.back().segments.push_back(in.segmentlist[i]);
-		}
-
-		trifree(out.trianglelist);
-		trifree(out.segmentlist);
 	}
 
 
