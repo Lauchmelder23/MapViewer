@@ -1,0 +1,3 @@
+[submodule "lib/osmparser"]
+	path = lib/osmparser
+	url = https://github.com/Lauchmelder23/OSMParser
