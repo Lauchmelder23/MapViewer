@@ -174,9 +174,9 @@ int main(int argc, char** argv)
 		SDL_SetRenderDrawColor(renderer, 240, 240, 250, 255);
 		SDL_RenderClear(renderer);
 		
-		// for (Multipolygon& multipolygon : multipolygons) {
-		//	multipolygon.Draw(renderer);
-		// }
+		 for (Multipolygon& multipolygon : multipolygons) {
+			multipolygon.Draw(renderer);
+		 }
 
 		//for (Area& area : buildings)
 		//{

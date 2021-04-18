@@ -19,8 +19,8 @@ struct TriangulationData {
 };
 
 struct Ring {
-	osmp::MemberWays ways;
-	int ring;
+	osmp::Nodes nodes;
+	bool inner;
 };
 
 // Map values from one interval [A, B] to another [a, b]
@@ -30,52 +30,82 @@ inline double Map(double A, double B, double a, double b, double x)
 }
 
 // TODO: Implement better algorithm
-bool SelfIntersecting(const Ring & ring)
+bool OnSegment(const osmp::Node& p, const osmp::Node& q, const osmp::Node& r);
+int Orientation(const osmp::Node& p, const osmp::Node& q, const osmp::Node& r);
+bool Intersect(const osmp::Node& p1, const osmp::Node& p2, const osmp::Node& q1, const osmp::Node& q2);
+bool SelfIntersecting(const Ring& ring);
+
+[[nodiscard]]
+bool BuildRing(Ring& ring, osmp::MemberWays& unassigned)
 {
-	struct Segment {
-		osmp::Node p1, p2;
-	};
-	
-	// Get all segments
-	std::vector<Segment> segments;
-	for (const osmp::MemberWay way : ring.ways)
+	const osmp::MemberWays original = unassigned;
+
+	// RA-2
+	int attempts = 0;
+	ring = Ring{ unassigned[attempts].way->GetNodes(), unassigned[attempts].role == "inner" };
+	unassigned.erase(unassigned.begin() + attempts);
+
+
+	while (!unassigned.empty())
 	{
-		osmp::Nodes nodes = way.way->GetNodes();
-		for (auto it = nodes.begin(); it != nodes.end() - 1; it++)
+	RA3:
+		// RA-3
+		if (ring.nodes.front() == ring.nodes.back())
 		{
-			segments.push_back({
-				*it, *(it + 1)
-			});
-		}
-	}
+			if (SelfIntersecting(ring))
+			{
+				unassigned = original;
+				attempts += 1;
+				if (unassigned.size() == attempts)
+					return false;
 
-	// Check for self intersection (O(n^2)...)
-	for (auto it = segments.begin(); it != segments.end(); it++)
-	{
-		for (auto jt = segments.begin(); jt != segments.end(); jt++)
-		{
-			if (it == jt) continue;
-
-			double A1 = (it->p1->lat - it->p2->lat) / (it->p1->lon - it->p2->lon);
-			double A2 = (jt->p1->lat - jt->p2->lat) / (jt->p1->lon - jt->p2->lon);
-			if (A1 == A2)	// Parallel
-				continue;
-
-			double b1 = it->p1->lat - A1 * it->p1->lon;
-			double b2 = jt->p1->lat - A2 * jt->p1->lon;
-			
-			double Xa = (b2 - b1) / (A1 - A2);
-			double Ya = A1 * Xa + b1;
-
-			if ((Xa < std::max(std::min(it->p1->lon, it->p2->lon), std::min(jt->p1->lon, jt->p2->lon))) ||
-				(Xa > std::min(std::max(it->p1->lon, it->p2->lon), std::max(jt->p1->lon, jt->p2->lon))))
-				continue;
+				ring = Ring{ unassigned[attempts].way->GetNodes(), unassigned[attempts].role == "inner" };
+			}
 			else
+			{
+				ring.nodes.pop_back();
 				return true;
+			}
+		}
+		else // RA-4
+		{
+			osmp::Node lastNode = ring.nodes.back();
+			for (auto it = unassigned.begin(); it != unassigned.end(); it++)
+			{
+				if (it->way->GetNodes().front() == lastNode)
+				{
+					ring.nodes.insert(ring.nodes.end(), it->way->GetNodes().begin() + 1, it->way->GetNodes().end());
+					unassigned.erase(it);
+					goto RA3;
+				}
+				else if (it->way->GetNodes().back() == lastNode)
+				{
+					ring.nodes.insert(ring.nodes.end(), it->way->GetNodes().rbegin() + 1, it->way->GetNodes().rend());
+					unassigned.erase(it);
+					goto RA3;
+				}
+			}
+
+			// No ring found
+			unassigned = original;
+			return false;
 		}
 	}
+}
 
-	return false;
+[[nodiscard]]
+bool AssignRings(std::vector<Ring>& rings, const osmp::MemberWays& members)
+{
+	// Ring assignment
+	osmp::MemberWays unassigned = members;
+	while (!unassigned.empty())
+	{
+		rings.push_back({});
+		if (!BuildRing(rings.back(), unassigned) || rings.size() > members.size())
+			return false;
+	}
+
+	return true;
 }
 
 Multipolygon::Multipolygon(const osmp::Relation& relation, int width, int height, const osmp::Bounds& bounds) :
@@ -86,29 +116,28 @@ Multipolygon::Multipolygon(const osmp::Relation& relation, int width, int height
 
 	const osmp::MemberWays& members = relation->GetWays();
 
-	// Implement https://wiki.openstreetmap.org/wiki/Relation:multipolygon/Algorithm
-	// Ring assignment
+	/* Implement https://wiki.openstreetmap.org/wiki/Relation:multipolygon/Algorithm */
 
-	// RA-1
 	std::vector<Ring> rings;
-	int ringCount = 0;
-
-	// RA-2
-	rings.push_back({ {members[0]}, ringCount });
-
-	// RA-3
-	if (rings[ringCount].ways.front().way == rings[ringCount].ways.back().way)
+	if (!AssignRings(rings, members))
 	{
-		if (SelfIntersecting(rings[ringCount]))
+		std::cerr << "Assigning rings has failed for multipolygon " << id << std::endl;
+	}
+
+	// TODO: Temporarily render rings:
+	for (const Ring& ring : rings)
+	{
+		Polygon polygon;
+		for (const osmp::Node& node : ring.nodes)
 		{
-			// Backtracking ??
+			polygon.vertices.push_back({
+				Map(bounds.minlon, bounds.maxlon, 0, width, node->lon),
+				height - Map(bounds.minlat, bounds.maxlat, 0, height, node->lat)
+			});
 		}
-	}
-	else // RA-4
-	{
 
+		polygons.push_back(polygon);
 	}
-
 
 	// TODO: Make a color map
 
@@ -498,57 +527,110 @@ void Multipolygon::Draw(SDL_Renderer* renderer)
 	if (!visible)
 		return;
 
-	// if (id != 6427823)
-	//	return;
-
 	for (const Polygon& polygon : polygons) {
-		switch(rendering)
-		{
-		case RenderType::FILL:
-			for (int i = 0; i < polygon.indices.size(); i += 3)	// Be a graphics card
-			{
-
-				filledTrigonRGBA(renderer,
-					polygon.vertices[polygon.indices[i + 0]].x, polygon.vertices[polygon.indices[i + 0]].y,
-					polygon.vertices[polygon.indices[i + 1]].x, polygon.vertices[polygon.indices[i + 1]].y,
-					polygon.vertices[polygon.indices[i + 2]].x, polygon.vertices[polygon.indices[i + 2]].y,
-					r, g, b, 255
+		for (auto it = polygon.vertices.begin(); it != polygon.vertices.end() - 1; it++) {
+			thickLineRGBA(renderer,
+				it->x, it->y,
+				(it+1)->x, (it+1)->y,
+				2,
+				r, g, b, 255
 				);
-			}
-			break;
-
-		case RenderType::OUTLINE:
-			for(int i = 0; i < polygon.segments.size(); i += 2)
-			{
-				thickLineRGBA(renderer,
-					polygon.vertices[polygon.segments[i + 0]].x, polygon.vertices[polygon.segments[i + 0]].y,
-					polygon.vertices[polygon.segments[i + 1]].x, polygon.vertices[polygon.segments[i + 1]].y,
-					5, r, g, b, 255
-				);
-			}
-			break;
-
-		case RenderType::INDOOR:
-			for (int i = 0; i < polygon.indices.size(); i += 3)	// Be a graphics card
-			{
-
-				filledTrigonRGBA(renderer,
-					polygon.vertices[polygon.indices[i + 0]].x, polygon.vertices[polygon.indices[i + 0]].y,
-					polygon.vertices[polygon.indices[i + 1]].x, polygon.vertices[polygon.indices[i + 1]].y,
-					polygon.vertices[polygon.indices[i + 2]].x, polygon.vertices[polygon.indices[i + 2]].y,
-					r, g, b, 255
-				);
-			}
-
-			for (int i = 0; i < polygon.segments.size(); i += 2)
-			{
-				lineRGBA(renderer,
-					polygon.vertices[polygon.segments[i + 0]].x, polygon.vertices[polygon.segments[i + 0]].y,
-					polygon.vertices[polygon.segments[i + 1]].x, polygon.vertices[polygon.segments[i + 1]].y,
-					10, 10, 15, 255
-				);
-			}
-			break;
 		}
 	}
+
+	//for (const Polygon& polygon : polygons) {
+	//	switch(rendering)
+	//	{
+	//	case RenderType::FILL:
+	//		for (int i = 0; i < polygon.indices.size(); i += 3)	// Be a graphics card
+	//		{
+
+	//			filledTrigonRGBA(renderer,
+	//				polygon.vertices[polygon.indices[i + 0]].x, polygon.vertices[polygon.indices[i + 0]].y,
+	//				polygon.vertices[polygon.indices[i + 1]].x, polygon.vertices[polygon.indices[i + 1]].y,
+	//				polygon.vertices[polygon.indices[i + 2]].x, polygon.vertices[polygon.indices[i + 2]].y,
+	//				r, g, b, 255
+	//			);
+	//		}
+	//		break;
+
+	//	case RenderType::OUTLINE:
+	//		for(int i = 0; i < polygon.segments.size(); i += 2)
+	//		{
+	//			thickLineRGBA(renderer,
+	//				polygon.vertices[polygon.segments[i + 0]].x, polygon.vertices[polygon.segments[i + 0]].y,
+	//				polygon.vertices[polygon.segments[i + 1]].x, polygon.vertices[polygon.segments[i + 1]].y,
+	//				5, r, g, b, 255
+	//			);
+	//		}
+	//		break;
+
+	//	case RenderType::INDOOR:
+	//		for (int i = 0; i < polygon.indices.size(); i += 3)	// Be a graphics card
+	//		{
+
+	//			filledTrigonRGBA(renderer,
+	//				polygon.vertices[polygon.indices[i + 0]].x, polygon.vertices[polygon.indices[i + 0]].y,
+	//				polygon.vertices[polygon.indices[i + 1]].x, polygon.vertices[polygon.indices[i + 1]].y,
+	//				polygon.vertices[polygon.indices[i + 2]].x, polygon.vertices[polygon.indices[i + 2]].y,
+	//				r, g, b, 255
+	//			);
+	//		}
+
+	//		for (int i = 0; i < polygon.segments.size(); i += 2)
+	//		{
+	//			lineRGBA(renderer,
+	//				polygon.vertices[polygon.segments[i + 0]].x, polygon.vertices[polygon.segments[i + 0]].y,
+	//				polygon.vertices[polygon.segments[i + 1]].x, polygon.vertices[polygon.segments[i + 1]].y,
+	//				10, 10, 15, 255
+	//			);
+	//		}
+	//		break;
+	//	}
+	//}
+}
+
+bool Intersect(const osmp::Node& p0, const osmp::Node& p1, const osmp::Node& p2, const osmp::Node& p3)
+{
+	if (p0 == p2 || p0 == p3 || p1 == p2 || p1 == p3) return false;
+
+	float s1_x, s1_y, s2_x, s2_y, sn, tn, sd, td, t;
+	s1_x = p1->lon - p0->lon;     s1_y = p1->lat - p0->lat;
+	s2_x = p3->lon - p2->lon;     s2_y = p3->lat - p2->lat;
+
+	sn = -s1_y * (p0->lon - p2->lon) + s1_x * (p0->lat - p2->lat);
+	sd = -s2_x * s1_y + s1_x * s2_y;
+	tn = s2_x * (p0->lat - p2->lat) - s2_y * (p0->lon - p2->lon);
+	td = -s2_x * s1_y + s1_x * s2_y;
+
+	return (sn >= 0 && sn <= sd && tn >= 0 && tn <= td);
+}
+bool SelfIntersecting(const Ring& ring)
+{
+	struct Segment {
+		osmp::Node p1, p2;
+	};
+
+	// Get all segments
+	std::vector<Segment> segments;
+	for (auto it = ring.nodes.begin(); it != ring.nodes.end() - 1; it++)
+	{
+		segments.push_back({
+			*it, *(it + 1)
+			});
+	}
+
+	// Check for self intersection (O(n^2)...)
+	for (auto it = segments.begin(); it != segments.end(); it++)
+	{
+		for (auto jt = segments.begin(); jt != segments.end(); jt++)
+		{
+			if (it == jt) continue;
+
+			if (Intersect(it->p1, it->p2, jt->p1, jt->p2)) 
+				return true;
+		}
+	}
+
+	return false;
 }
