@@ -1,6 +1,7 @@
 #include "..\include\multipolygon.hpp"
 
 #include <vector>
+#include <array>
 #include <algorithm>
 #include <map>
 #include <iostream>
@@ -12,6 +13,7 @@
 #include <SDL2_gfxPrimitives.h>
 
 #define BREAKIF(x) if(relation->id == x) __debugbreak()
+#define INDEXOF(x, y, n) (y * n + x)
 
 struct TriangulationData {
 	std::vector<REAL> vertices, holes;
@@ -23,6 +25,10 @@ struct Ring {
 	bool inner;
 };
 
+struct RingGroup {
+	std::vector<Ring> rings;
+};
+
 // Map values from one interval [A, B] to another [a, b]
 inline double Map(double A, double B, double a, double b, double x)
 {
@@ -30,83 +36,16 @@ inline double Map(double A, double B, double a, double b, double x)
 }
 
 // TODO: Implement better algorithm
-bool OnSegment(const osmp::Node& p, const osmp::Node& q, const osmp::Node& r);
-int Orientation(const osmp::Node& p, const osmp::Node& q, const osmp::Node& r);
-bool Intersect(const osmp::Node& p1, const osmp::Node& p2, const osmp::Node& q1, const osmp::Node& q2);
-bool SelfIntersecting(const Ring& ring);
+[[nodiscard]] bool Intersect(double p1_x, double p1_y, double p2_x, double p2_y, double q1_x, double q1_y, double q2_x, double q2_y);
+[[nodiscard]] bool Intersect(const osmp::Node& p1, const osmp::Node& p2, const osmp::Node& q1, const osmp::Node& q2);
+[[nodiscard]] bool SelfIntersecting(const Ring& ring);
 
-[[nodiscard]]
-bool BuildRing(Ring& ring, osmp::MemberWays& unassigned)
-{
-	const osmp::MemberWays original = unassigned;
+[[nodiscard]] bool BuildRing(Ring& ring, osmp::MemberWays& unassigned);
+[[nodiscard]] bool AssignRings(std::vector<Ring>& rings, const osmp::MemberWays& members);
 
-	// RA-2
-	int attempts = 0;
-	ring = Ring{ unassigned[attempts].way->GetNodes(), unassigned[attempts].role == "inner" };
-	unassigned.erase(unassigned.begin() + attempts);
-
-
-	while (!unassigned.empty())
-	{
-	RA3:
-		// RA-3
-		if (ring.nodes.front() == ring.nodes.back())
-		{
-			if (SelfIntersecting(ring))
-			{
-				unassigned = original;
-				attempts += 1;
-				if (unassigned.size() == attempts)
-					return false;
-
-				ring = Ring{ unassigned[attempts].way->GetNodes(), unassigned[attempts].role == "inner" };
-			}
-			else
-			{
-				ring.nodes.pop_back();
-				return true;
-			}
-		}
-		else // RA-4
-		{
-			osmp::Node lastNode = ring.nodes.back();
-			for (auto it = unassigned.begin(); it != unassigned.end(); it++)
-			{
-				if (it->way->GetNodes().front() == lastNode)
-				{
-					ring.nodes.insert(ring.nodes.end(), it->way->GetNodes().begin() + 1, it->way->GetNodes().end());
-					unassigned.erase(it);
-					goto RA3;
-				}
-				else if (it->way->GetNodes().back() == lastNode)
-				{
-					ring.nodes.insert(ring.nodes.end(), it->way->GetNodes().rbegin() + 1, it->way->GetNodes().rend());
-					unassigned.erase(it);
-					goto RA3;
-				}
-			}
-
-			// No ring found
-			unassigned = original;
-			return false;
-		}
-	}
-}
-
-[[nodiscard]]
-bool AssignRings(std::vector<Ring>& rings, const osmp::MemberWays& members)
-{
-	// Ring assignment
-	osmp::MemberWays unassigned = members;
-	while (!unassigned.empty())
-	{
-		rings.push_back({});
-		if (!BuildRing(rings.back(), unassigned) || rings.size() > members.size())
-			return false;
-	}
-
-	return true;
-}
+[[nodiscard]] bool PointInsideRing(const Ring& ring, const osmp::Node& point);
+[[nodiscard]] bool IsRingContained(const Ring& r1, const Ring& r2);
+[[nodiscard]] bool GroupRings(std::vector<RingGroup>& ringGroup, const std::vector<Ring>& rings);
 
 Multipolygon::Multipolygon(const osmp::Relation& relation, int width, int height, const osmp::Bounds& bounds) :
 	r(255), g(0), b(255), visible(true), rendering(RenderType::FILL), id(relation->id)
@@ -123,6 +62,9 @@ Multipolygon::Multipolygon(const osmp::Relation& relation, int width, int height
 	{
 		std::cerr << "Assigning rings has failed for multipolygon " << id << std::endl;
 	}
+
+	std::vector<RingGroup> ringGroup;
+	GroupRings(ringGroup, rings);
 
 	// TODO: Temporarily render rings:
 	for (const Ring& ring : rings)
@@ -590,20 +532,34 @@ void Multipolygon::Draw(SDL_Renderer* renderer)
 	//}
 }
 
+bool Intersect(double p0_x, double p0_y, double p1_x, double p1_y, double p2_x, double p2_y, double p3_x, double p3_y)
+{
+	if ((p0_x == p2_x && p0_y == p2_y) || 
+		(p0_x == p3_x && p0_y == p3_y) ||
+		(p1_x == p2_x && p1_y == p2_y) ||
+		(p1_x == p3_x && p1_y == p3_y)) 
+		return false;
+
+	float s1_x, s1_y, s2_x, s2_y;
+	s1_x = p1_x - p0_x;     s1_y = p1_y - p0_y;
+	s2_x = p3_x - p2_x;     s2_y = p3_y - p2_y;
+
+	float s, t;
+	s = (-s1_y * (p0_x - p2_x) + s1_x * (p0_y - p2_y)) / (-s2_x * s1_y + s1_x * s2_y);
+	t = (s2_x * (p0_y - p2_y) - s2_y * (p0_x - p2_x)) / (-s2_x * s1_y + s1_x * s2_y);
+
+	if (s >= 0 && s <= 1 && t >= 0 && t <= 1)
+	{
+		// Collision detected
+		return 1;
+	}
+
+	return 0; // No collision
+}
+
 bool Intersect(const osmp::Node& p0, const osmp::Node& p1, const osmp::Node& p2, const osmp::Node& p3)
 {
-	if (p0 == p2 || p0 == p3 || p1 == p2 || p1 == p3) return false;
-
-	float s1_x, s1_y, s2_x, s2_y, sn, tn, sd, td, t;
-	s1_x = p1->lon - p0->lon;     s1_y = p1->lat - p0->lat;
-	s2_x = p3->lon - p2->lon;     s2_y = p3->lat - p2->lat;
-
-	sn = -s1_y * (p0->lon - p2->lon) + s1_x * (p0->lat - p2->lat);
-	sd = -s2_x * s1_y + s1_x * s2_y;
-	tn = s2_x * (p0->lat - p2->lat) - s2_y * (p0->lon - p2->lon);
-	td = -s2_x * s1_y + s1_x * s2_y;
-
-	return (sn >= 0 && sn <= sd && tn >= 0 && tn <= td);
+	return Intersect(p0->lon, p0->lat, p1->lon, p1->lat, p2->lon, p2->lat, p3->lon, p3->lat);
 }
 bool SelfIntersecting(const Ring& ring)
 {
@@ -613,11 +569,20 @@ bool SelfIntersecting(const Ring& ring)
 
 	// Get all segments
 	std::vector<Segment> segments;
-	for (auto it = ring.nodes.begin(); it != ring.nodes.end() - 1; it++)
+	for (auto it = ring.nodes.begin(); it != ring.nodes.end(); it++)
 	{
-		segments.push_back({
-			*it, *(it + 1)
-			});
+		if (it == ring.nodes.end() - 1)
+		{
+			segments.push_back({
+				*it, ring.nodes.front()
+				});
+		}
+		else
+		{
+			segments.push_back({
+				*it, *(it + 1)
+				});
+		}
 	}
 
 	// Check for self intersection (O(n^2)...)
@@ -633,4 +598,141 @@ bool SelfIntersecting(const Ring& ring)
 	}
 
 	return false;
+}
+
+bool BuildRing(Ring& ring, osmp::MemberWays& unassigned)
+{
+	const osmp::MemberWays original = unassigned;
+
+	// RA-2
+	int attempts = 0;
+	ring = Ring{ unassigned[attempts].way->GetNodes(), unassigned[attempts].role == "inner" };
+	unassigned.erase(unassigned.begin() + attempts);
+
+RA3:
+	// RA-3
+	if (ring.nodes.front() == ring.nodes.back())
+	{
+		if (SelfIntersecting(ring))
+		{
+			unassigned = original;
+			attempts += 1;
+			if (unassigned.size() == attempts)
+				return false;
+
+			ring = Ring{ unassigned[attempts].way->GetNodes(), unassigned[attempts].role == "inner" };
+			goto RA3;
+		}
+		else
+		{
+			ring.nodes.pop_back();
+			return true;
+		}
+	}
+	else // RA-4
+	{
+		osmp::Node lastNode = ring.nodes.back();
+		for (auto it = unassigned.begin(); it != unassigned.end(); it++)
+		{
+			if (it->way->GetNodes().front() == lastNode)
+			{
+				ring.nodes.insert(ring.nodes.end(), it->way->GetNodes().begin() + 1, it->way->GetNodes().end());
+				unassigned.erase(it);
+				goto RA3;
+			}
+			else if (it->way->GetNodes().back() == lastNode)
+			{
+				ring.nodes.insert(ring.nodes.end(), it->way->GetNodes().rbegin() + 1, it->way->GetNodes().rend());
+				unassigned.erase(it);
+				goto RA3;
+			}
+		}
+
+		// No ring found
+		unassigned = original;
+		return false;
+	}
+}
+
+bool AssignRings(std::vector<Ring>& rings, const osmp::MemberWays& members)
+{
+	// Ring assignment
+	osmp::MemberWays unassigned = members;
+	while (!unassigned.empty())
+	{
+		rings.push_back({});
+		if (!BuildRing(rings.back(), unassigned) || rings.size() > members.size())
+			return false;
+	}
+
+	return true;
+}
+
+bool cmp(const osmp::Node& a, const osmp::Node& b) 
+{
+	return (a->lon < b->lon);
+}
+
+bool PointInsideRing(const Ring& ring, const osmp::Node& point)
+{
+	const osmp::Node& rightestNode = *(std::max_element(ring.nodes.begin(), ring.nodes.end(), cmp));
+	
+	int intersections = 0;
+	for (auto it = ring.nodes.begin(); it != ring.nodes.end(); it++)
+	{
+		const osmp::Node& jt = ((it == ring.nodes.end() - 1) ? ring.nodes.front() : *(it + 1));
+		intersections += Intersect((*it)->GetLon(), (*it)->GetLat(),
+			jt->GetLon(), jt->GetLat(), 
+			point->GetLon(), point->GetLat(), 
+			rightestNode->GetLon() + 1.0f, point->GetLat()
+		);
+	}
+
+	return (intersections % 2 != 0);
+}
+
+bool IsRingContained(const Ring& r1, const Ring& r2)
+{
+	// Test if any line segments are intersecting
+	// I don't think this is needed actually, the rings shouldn't overlap so testing if a node is inside is enough!
+	// Gonna leave this here tho in case we *do* need to see if a ring is completely contained
+	//for (auto it = r1.nodes.begin(); it != r1.nodes.end(); it++)
+	//{
+	//	for (auto jt = r2.nodes.begin(); jt != r2.nodes.end(); jt++)
+	//	{
+	//		osmp::Node n1 = ((it == r1.nodes.end() - 1) ? r1.nodes.front() : *(it + 1));
+	//		osmp::Node n2 = ((jt == r2.nodes.end() - 1) ? r2.nodes.front() : *(jt + 1));
+
+	//		if (Intersect(*it, n1, *jt, n2))
+	//			return false;
+	//	}
+	//}
+
+	if (PointInsideRing(r1, r2.nodes.front()))
+		return true;
+
+	return false;
+}
+
+bool GroupRings(std::vector<RingGroup>& ringGroups, const std::vector<Ring>& rings)
+{
+	//RG-1
+	int ringNum = rings.size();
+	std::vector<bool> containmentMatrix(ringNum * ringNum);
+
+	for (int i = 0; i < ringNum; i++)
+	{
+		for (int j = 0; j < ringNum; j++)
+		{
+			if (i == j) {
+				containmentMatrix[INDEXOF(i, j, ringNum)] = false;
+				continue;
+			}
+
+			containmentMatrix[INDEXOF(i, j, ringNum)] = IsRingContained(rings[i], rings[j]);
+		}
+	}
+	__debugbreak();
+
+	return true;
 }
