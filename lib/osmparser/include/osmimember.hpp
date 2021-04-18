@@ -24,7 +24,7 @@ namespace osmp
 
 		[[nodiscard]] IMember::Type GetType() const;
 
-		[[nodiscard]] const std::vector<Tag>& GetTags() const;
+		[[nodiscard]] const TagList& GetTags() const;
 		[[nodiscard]] size_t GetTagsSize() const;
 		[[nodiscard]] const Tag& GetTag(size_t index) const;
 		[[nodiscard]] std::string GetTag(const std::string& key) const;
@@ -36,8 +36,7 @@ namespace osmp
 		IMember::Type type;
 		Object* parent;
 
-		std::vector<Tag> tags;
-		// std::map<std::string, std::string> tags;
+		TagList tags;
 		
 	public:
 		uint64_t id;

@@ -33,4 +33,6 @@ namespace osmp
 		std::string k;	// TODO: Should/could be an enum
 		std::string v;
 	} Tag;
+
+	typedef std::vector<Tag> TagList;
 }

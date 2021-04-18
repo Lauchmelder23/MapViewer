@@ -19,7 +19,7 @@ struct TriangulationData {
 };
 
 struct Ring {
-	std::vector<osmp::Relation::Member> members;
+	osmp::MemberWays ways;
 	int ring;
 };
 
@@ -33,14 +33,14 @@ inline double Map(double A, double B, double a, double b, double x)
 bool SelfIntersecting(const Ring & ring)
 {
 	struct Segment {
-		std::shared_ptr<osmp::Node> p1, p2;
+		osmp::Node p1, p2;
 	};
 	
 	// Get all segments
 	std::vector<Segment> segments;
-	for (const osmp::Relation::Member member : ring.members)
+	for (const osmp::MemberWay way : ring.ways)
 	{
-		std::vector<std::shared_ptr<osmp::Node>> nodes = std::dynamic_pointer_cast<osmp::Way>(member.member)->GetNodes();
+		osmp::Nodes nodes = way.way->GetNodes();
 		for (auto it = nodes.begin(); it != nodes.end() - 1; it++)
 		{
 			segments.push_back({
@@ -78,13 +78,13 @@ bool SelfIntersecting(const Ring & ring)
 	return false;
 }
 
-Multipolygon::Multipolygon(const std::shared_ptr<osmp::Relation>& relation, int width, int height, osmp::Bounds bounds) :
+Multipolygon::Multipolygon(const osmp::Relation& relation, int width, int height, const osmp::Bounds& bounds) :
 	r(255), g(0), b(255), visible(true), rendering(RenderType::FILL), id(relation->id)
 {
 	if (relation->HasNullMembers())
 		return;
 
-	const std::vector<osmp::Relation::Member>& members = relation->GetWays();
+	const osmp::MemberWays& members = relation->GetWays();
 
 	// Implement https://wiki.openstreetmap.org/wiki/Relation:multipolygon/Algorithm
 	// Ring assignment
@@ -97,7 +97,7 @@ Multipolygon::Multipolygon(const std::shared_ptr<osmp::Relation>& relation, int 
 	rings.push_back({ {members[0]}, ringCount });
 
 	// RA-3
-	if (rings[ringCount].members.front().member == rings[ringCount].members.back().member)
+	if (rings[ringCount].ways.front().way == rings[ringCount].ways.back().way)
 	{
 		if (SelfIntersecting(rings[ringCount]))
 		{

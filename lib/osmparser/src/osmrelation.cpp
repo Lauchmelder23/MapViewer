@@ -1,3 +1,4 @@
+#include "..\include\osmrelation.hpp"
 #include <osmrelation.hpp>
 
 #include <memory>
@@ -11,7 +12,7 @@ namespace xml = tinyxml2;
 
 namespace osmp
 {
-	Relation::Relation(const xml::XMLElement* xml, Object* parent) :
+	IRelation::IRelation(const xml::XMLElement* xml, Object* parent) :
 		IMember(xml, parent, IMember::Type::RELATION), hasNullMembers(false)
 	{
 		const xml::XMLElement* member_element = xml->FirstChildElement("member");
@@ -21,54 +22,66 @@ namespace osmp
 			uint64_t ref = GetSafeAttributeUint64(member_element, "ref");
 			std::string role = GetSafeAttributeString(member_element, "role");
 
-			std::shared_ptr<IMember> member = nullptr;
 			if (memberType == "node") {
-				member = parent->GetNode(ref);
-				nodes.push_back({ member, role });
+				Node node = parent->GetNode(ref);
+				nodes.push_back({ node, role });
 			}
 			else if (memberType == "way") {
-				member = parent->GetWay(ref);
-				if (member == nullptr) {
+				Way way = parent->GetWay(ref);
+				if (way == nullptr) {
 					hasNullMembers = true;
 				}
-				ways.push_back({ member, role });
+				ways.push_back({ way, role });
 			}
 
 			member_element = member_element->NextSiblingElement("member");
 		}
 	}
 
-	std::string Relation::GetRelationType()
+	namespace {
+		struct ConcreteRelation : public IRelation {
+			ConcreteRelation(const tinyxml2::XMLElement* way_elem, Object* parent) :
+				IRelation(way_elem, parent)
+			{}
+		};
+	}
+
+	Relation CreateRelation(const tinyxml2::XMLElement* xml, Object* parent)
+	{
+		return std::make_shared<ConcreteRelation>(xml, parent);
+	}
+
+	std::string IRelation::GetRelationType() const
 	{
 		return GetTag("type");
 	}
 
-	const std::vector<Relation::Member>& Relation::GetNodes() const
+	const MemberNodes& IRelation::GetNodes() const
 	{
 		return nodes;
 	}
 
-	size_t Relation::GetNodesSize() const
+	size_t IRelation::GetNodesSize() const
 	{
 		return nodes.size();
 	}
 
-	const Relation::Member& Relation::GetNode(size_t index) const
+	const MemberNode& IRelation::GetNode(size_t index) const
 	{
 		return nodes[index];
 	}
 
-	const std::vector<Relation::Member>& Relation::GetWays() const
+	const MemberWays& IRelation::GetWays() const
 	{
 		return ways;
 	}
 
-	size_t Relation::GetWaysSize() const
+	size_t IRelation::GetWaysSize() const
 	{
 		return ways.size();
 	}
 
-	const Relation::Member& Relation::GetWay(size_t index) const
+	const MemberWay& IRelation::GetWay(size_t index) const
 	{
 		return ways[index];
 	}

@@ -10,7 +10,7 @@ namespace xml = tinyxml2;
 
 namespace osmp
 {
-	Way::Way(const tinyxml2::XMLElement* way_elem, Object* parent) :
+	IWay::IWay(const tinyxml2::XMLElement* way_elem, Object* parent) :
 		IMember(way_elem, parent, IMember::Type::WAY)
 	{
 		area = GetSafeAttributeBool(way_elem, "area");
@@ -35,17 +35,30 @@ namespace osmp
 		}
 	}
 
-	const std::vector<std::shared_ptr<Node>>& Way::GetNodes() const
+	namespace {
+		struct ConcreteWay : public IWay {
+			ConcreteWay(const tinyxml2::XMLElement* way_elem, Object* parent) :
+				IWay(way_elem, parent)
+			{}
+		};
+	}
+
+	Way CreateWay(const tinyxml2::XMLElement* way_elem, Object* parent)
+	{
+		return std::make_shared<ConcreteWay>(way_elem, parent);
+	}
+
+	const Nodes& IWay::GetNodes() const
 	{
 		return nodes;
 	}
 
-	size_t Way::GetNodesSize() const
+	size_t IWay::GetNodesSize() const
 	{
 		return nodes.size();
 	}
 
-	const std::shared_ptr<Node>& Way::GetNode(size_t index) const
+	Node IWay::GetNode(size_t index) const
 	{
 		return nodes[index];
 	}

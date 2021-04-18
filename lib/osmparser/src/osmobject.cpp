@@ -39,7 +39,7 @@ namespace osmp
 		xml::XMLElement* node_elem = root->FirstChildElement("node");
 		while (node_elem != nullptr)
 		{
-			std::shared_ptr<Node> new_node = std::make_shared<Node>(node_elem, this);
+			Node new_node = CreateNode(node_elem, this);
 			nodes.insert(std::make_pair(new_node->id, new_node));
 
 			node_elem = node_elem->NextSiblingElement("node");
@@ -49,7 +49,7 @@ namespace osmp
 		xml::XMLElement* way_elem = root->FirstChildElement("way");
 		while (way_elem != nullptr)
 		{
-			std::shared_ptr<Way> new_way = std::make_shared<Way>(way_elem, this);
+			Way new_way = CreateWay(way_elem, this);
 			ways.insert(std::make_pair(new_way->id, new_way));
 
 			way_elem = way_elem->NextSiblingElement("way");
@@ -59,7 +59,7 @@ namespace osmp
 		xml::XMLElement* relation_elem = root->FirstChildElement("relation");
 		while (relation_elem != nullptr)
 		{
-			std::shared_ptr<Relation> new_way = std::make_shared<Relation>(relation_elem, this);
+			Relation new_way = CreateRelation(relation_elem, this);
 			relations.insert(std::make_pair(new_way->id, new_way));
 
 			relation_elem = relation_elem->NextSiblingElement("relation");
@@ -71,10 +71,10 @@ namespace osmp
 
 	}
 
-	std::vector<std::shared_ptr<Node>> Object::GetNodes() const
+	Nodes Object::GetNodes() const
 	{
-		std::vector<std::shared_ptr<Node>> vecNodes;
-		for (std::map<uint64_t, std::shared_ptr<Node>>::const_iterator it = nodes.begin(); it != nodes.end(); it++)
+		Nodes vecNodes;
+		for (std::map<uint64_t, Node>::const_iterator it = nodes.begin(); it != nodes.end(); it++)
 			vecNodes.push_back(it->second);
 
 		return vecNodes;
@@ -85,19 +85,19 @@ namespace osmp
 		return nodes.size();
 	}
 
-	std::shared_ptr<Node> Object::GetNode(uint64_t id) const
+	Node Object::GetNode(uint64_t id) const
 	{
-		std::map<uint64_t, std::shared_ptr<Node>>::const_iterator node = nodes.find(id);
+		std::map<uint64_t, Node>::const_iterator node = nodes.find(id);
 		if (node != nodes.end())
 			return node->second;
 
 		return nullptr;
 	}
 
-	std::vector<std::shared_ptr<Way>> Object::GetWays() const
+	Ways Object::GetWays() const
 	{
-		std::vector<std::shared_ptr<Way>> vecWays;
-		for (std::map<uint64_t, std::shared_ptr<Way>>::const_iterator it = ways.begin(); it != ways.end(); it++)
+		Ways vecWays;
+		for (std::map<uint64_t, Way>::const_iterator it = ways.begin(); it != ways.end(); it++)
 			vecWays.push_back(it->second);
 
 		return vecWays;
@@ -108,19 +108,19 @@ namespace osmp
 		return ways.size();
 	}
 
-	std::shared_ptr<Way> Object::GetWay(uint64_t id) const
+	Way Object::GetWay(uint64_t id) const
 	{
-		std::map<uint64_t, std::shared_ptr<Way>>::const_iterator way = ways.find(id);
+		std::map<uint64_t, Way>::const_iterator way = ways.find(id);
 		if (way != ways.end())
 			return way->second;
 
 		return nullptr;
 	}
 
-	std::vector<std::shared_ptr<Relation>> Object::GetRelations() const
+	Relations Object::GetRelations() const
 	{
-		std::vector<std::shared_ptr<Relation>> vecRelations;
-		for (std::map<uint64_t, std::shared_ptr<Relation>>::const_iterator it = relations.begin(); it != relations.end(); it++)
+		Relations vecRelations;
+		for (std::map<uint64_t, Relation>::const_iterator it = relations.begin(); it != relations.end(); it++)
 			vecRelations.push_back(it->second);
 
 		return vecRelations;
@@ -131,9 +131,9 @@ namespace osmp
 		return relations.size();
 	}
 
-	std::shared_ptr<Relation> Object::GetRelation(uint64_t id) const
+	Relation Object::GetRelation(uint64_t id) const
 	{
-		std::map<uint64_t, std::shared_ptr<Relation>>::const_iterator relation = relations.find(id);
+		std::map<uint64_t, Relation>::const_iterator relation = relations.find(id);
 		if (relation != relations.end())
 			return relation->second;
 

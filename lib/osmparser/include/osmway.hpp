@@ -9,21 +9,27 @@
 namespace osmp
 {
 	class Object;
-	class Node;
 
-	class Way : public IMember
+	class IWay : public IMember
 	{
 	public:
-		Way(const tinyxml2::XMLElement* way_elem, Object* parent);
+		IWay(const IWay& other) = delete;
+		IWay(const IWay&& other) = delete;
+		virtual ~IWay() {}
 
-		[[nodiscard]] const std::vector<std::shared_ptr<Node>>& GetNodes() const;
+		friend Way CreateWay(const tinyxml2::XMLElement* way_elem, Object* parent);
+
+		[[nodiscard]] const Nodes& GetNodes() const;
 		[[nodiscard]] size_t GetNodesSize() const;
-		[[nodiscard]] const std::shared_ptr<Node>& GetNode(size_t index) const;
+		[[nodiscard]] Node GetNode(size_t index) const;
+
+	protected:
+		IWay(const tinyxml2::XMLElement* way_elem, Object* parent);
 
 	public:
 		bool area, closed;	// Closed := Startpoint = endpoint, Area := Closed AND certain conditions are not met
 
 	private:
-		std::vector<std::shared_ptr<Node>> nodes;
+		Nodes nodes;
 	};
 }
