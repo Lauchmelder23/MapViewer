@@ -1,6 +1,7 @@
 #include "..\include\multipolygon.hpp"
 
 #include <vector>
+#include <array>
 #include <algorithm>
 #include <map>
 #include <iostream>
@@ -12,10 +13,22 @@
 #include <SDL2_gfxPrimitives.h>
 
 #define BREAKIF(x) if(relation->id == x) __debugbreak()
+#define INDEXOF(x, y, n) (y * n + x)
 
 struct TriangulationData {
 	std::vector<REAL> vertices, holes;
 	std::vector<int> segments;
+};
+
+struct Ring {
+	osmp::Nodes nodes;
+	bool inner;
+	int index;
+	bool hole = false;
+};
+
+struct RingGroup {
+	std::vector<Ring> rings;
 };
 
 // Map values from one interval [A, B] to another [a, b]
@@ -24,252 +37,142 @@ inline double Map(double A, double B, double a, double b, double x)
 	return (x - A) * (b - a) / (B - A) + a;
 }
 
-Multipolygon::Multipolygon(const std::shared_ptr<osmp::Relation>& relation, int width, int height, osmp::Bounds bounds) :
+// TODO: Implement better algorithm
+[[nodiscard]] bool Intersect(double p1_x, double p1_y, double p2_x, double p2_y, double q1_x, double q1_y, double q2_x, double q2_y);
+[[nodiscard]] bool Intersect(const osmp::Node& p1, const osmp::Node& p2, const osmp::Node& q1, const osmp::Node& q2);
+[[nodiscard]] bool SelfIntersecting(const Ring& ring);
+
+[[nodiscard]] bool BuildRing(Ring& ring, osmp::MemberWays& unassigned, int ringCount);
+[[nodiscard]] bool AssignRings(std::vector<Ring>& rings, const osmp::MemberWays& members);
+
+void FindAllContainedRings(const std::vector<bool>& containmentMatrix, int container, int numRings, std::vector<int>& buffer);
+void FindAllContainedRingsThatArentContainedByUnusedRings(const std::vector<bool>& containmentMatrix, int container, int numRings, const std::vector<Ring>& unusedRings, std::vector<int>& buffer);
+[[nodiscard]] int FindUncontainedRing(const std::vector<bool>& containmentMatrix, int rings, const std::vector<Ring>& unusedRings);
+[[nodiscard]] bool PointInsideRing(const Ring& ring, const osmp::Node& point);
+[[nodiscard]] bool IsRingContained(const Ring& r1, const Ring& r2);
+[[nodiscard]] bool GroupRings(std::vector<RingGroup>& ringGroup, std::vector<Ring>& rings);
+
+Multipolygon::Multipolygon(const osmp::Relation& relation, int width, int height, const osmp::Bounds& bounds) :
 	r(255), g(0), b(255), visible(true), rendering(RenderType::FILL), id(relation->id)
 {
 	if (relation->HasNullMembers())
 		return;
 
-	// BREAKIF(7344428);
-	// BREAKIF(6427823);
+	const osmp::MemberWays& members = relation->GetWays();
 
-	std::vector<TriangulationData> data;
+	/* Implement https://wiki.openstreetmap.org/wiki/Relation:multipolygon/Algorithm */
 
-	std::vector<osmp::Relation::Member> ways = relation->GetWays();
-	std::vector<std::shared_ptr<osmp::Node>> nodes;
-	int run = 1;
-
-	bool lastWasInner = false;
-	bool hasSeenOuter = false;
-	std::vector<std::vector<osmp::Relation::Member>> outerWays;
-	std::vector<std::vector<osmp::Relation::Member>> innerWays;
-	// Pre processing
-	for (osmp::Relation::Member member : ways) {
-		std::shared_ptr<osmp::Way> way = std::dynamic_pointer_cast<osmp::Way>(member.member);
-		if (member.role == "inner") 
-		{
-			if (!hasSeenOuter)	// TODO: Find better way to sort things
-				continue;
-
-			if (innerWays.empty() || !lastWasInner)
-				innerWays.push_back({});
-
-			innerWays.back().push_back(member);
-			lastWasInner = true;
-		}
-		else 
-		{
-			hasSeenOuter = true;
-			if (outerWays.empty() || lastWasInner)
-				outerWays.push_back({});
-
-			outerWays.back().push_back(member);
-			lastWasInner = false;
-		}
+	std::vector<Ring> rings;
+	if (!AssignRings(rings, members))
+	{
+		std::cerr << "Assigning rings has failed for multipolygon " << id << std::endl;
 	}
 
-	if (outerWays.empty())	// There must always be an outer ring, anything else makes no sense
-		return;
+	std::vector<RingGroup> ringGroups;
+	GroupRings(ringGroups, rings);
 
-	auto jt = outerWays.begin();
-	bool currentIsInner = false;
-	while (!outerWays.empty() || !innerWays.empty())
+	char* triSwitches = "zpNBQ";
+	for (const RingGroup& ringGroup : ringGroups) 
 	{
-		std::vector<osmp::Relation::Member> member = *jt;
-		auto it = member.begin();
-		while (!member.empty())
+		TriangulationData td;
+
+		bool valid = true;
+		for (const Ring& ring : ringGroup.rings)
 		{
-			if (it == member.end())
-				it = member.begin();
-			std::shared_ptr<osmp::Way> way = std::dynamic_pointer_cast<osmp::Way>(it->member);
-
-			// Several possible scenarios:
-			// Closed way
-			//		Outer edge
-			//			Append all nodes to the triangulation data
-			//		Inner edge
-			//			Append all nodes to the triangulation data
-			//			Calculate average of nodes to get coordinates of the hole
-			//
-			// Open way
-			//		Read next way until way is closed. This MUST happen, if the way remains open the OSM data is faulty and should be discarded
-			//		Continue with Closed way algorithm
-
-			bool inner = (it->role == "inner");
-			std::vector<std::shared_ptr<osmp::Node>> wayNodes = way->GetNodes();
-
-			if (run == 1) {
-				nodes.insert(nodes.begin(), wayNodes.begin(), wayNodes.end());
-			}
-			else {
-				if (nodes.back() == wayNodes.front()) {
-					nodes.insert(nodes.end(), wayNodes.begin() + 1, wayNodes.end());
-				}
-				else if (nodes.back() == wayNodes.back()) {
-					nodes.insert(nodes.end(), wayNodes.rbegin() + 1, wayNodes.rend());
-				}
-				else if (nodes.front() == wayNodes.back()) {
-					nodes.insert(nodes.begin(), wayNodes.begin(), wayNodes.end() - 1);
-				}
-				else if (nodes.front() == wayNodes.front()) {
-					nodes.insert(nodes.begin(), wayNodes.rbegin(), wayNodes.rend() - 1);
-				}
-				else {
-					it++;
-					continue;
-				}
-			}
-
-			it = member.erase(it);
-
-			run++;
-
-			if (!(way->closed)) {
-				if (nodes.size() > 1 && nodes.front() == nodes.back())
-				{
-					// nodes.pop_back();
-				}
-				else
-				{
-					continue;
-				}
-			}
-
-			nodes.pop_back();
-
-			if (!inner || data.empty())
-			{
-				data.push_back({});
-			}
-			TriangulationData& td = data.back();
-
-			// Push all vertices to data
 			std::vector<REAL> vertices;
-			std::map<int, int> duplicates;
-			int n = td.vertices.size() / 2;
-			for (const std::shared_ptr<osmp::Node>& node : nodes) {
+			for (const osmp::Node& node : ring.nodes) {
 				double x = Map(bounds.minlon, bounds.maxlon, 0, width, node->lon);
 				double y = height - Map(bounds.minlat, bounds.maxlat, 0, height, node->lat);
 
-				auto xit = std::find(td.vertices.begin(), td.vertices.end(), x);
-				auto yit = std::find(td.vertices.begin(), td.vertices.end(), y);
-				if (std::distance(xit, yit) == 1) {
-					duplicates.insert(std::make_pair(n, std::distance(td.vertices.begin(), xit) / 2));
-				}
-				else {
-					vertices.push_back(x);
-					vertices.push_back(y);
-				}
-				n++;
+				vertices.push_back(x);
+				vertices.push_back(y);
 			}
 
-			if (inner)
-			{
-				// Calculate data of hole by using the average position of all inner vertices (that should work right?, probably not...)
-				REAL holeX = 0.0f;
-				REAL holeY = 0.0f;;
+			int segment = td.vertices.size() / 2;
+			for (int i = 0; i < vertices.size() / 2; i += 1) {
+				td.segments.push_back(segment + i);
+				td.segments.push_back(segment + i + 1);
+			}
+			td.segments.back() = td.vertices.size() / 2;
+
+			td.vertices.insert(td.vertices.end(), vertices.begin(), vertices.end());
+
+			if (ring.hole) {
+				double holeX = 0.0f;
+				double holeY = 0.0f;
 				for (int i = 0; i < vertices.size(); i += 2)
 				{
 					holeX += vertices[i];
 					holeY += vertices[i + 1];
 				}
-				holeX /= (vertices.size() / 2);
-				holeY /= (vertices.size() / 2);
+
+				holeX /= vertices.size() / 2;
+				holeY /= vertices.size() / 2;
 
 				td.holes.push_back(holeX);
 				td.holes.push_back(holeY);
 			}
+		}
 
-			// Get segments
-			int segNum = td.vertices.size() / 2;
-			for (int i = 0; i < vertices.size(); i += 2) {
-				auto dit = duplicates.find(segNum);
-				if (dit != duplicates.end())
-				{
-					td.segments.push_back(dit->second);
-				}
-				else
-				{
-					td.segments.push_back(segNum++);
-				}
+		// TODO: Find better way to check for duplicates
+		for (int i = 0; i < td.vertices.size(); i += 2) {
+			for (int j = 0; j < td.vertices.size(); j += 2) {
+				if (i == j) continue;
 
-				dit = duplicates.find(segNum);
-				if (dit != duplicates.end())
+				if (td.vertices[i] == td.vertices[j] && td.vertices[i + 1] == td.vertices[j + 1])
 				{
-					td.segments.push_back(dit->second);
-				}
-				else
-				{
-					td.segments.push_back(segNum);
+					valid = false;
+					break;
 				}
 			}
-			td.segments.back() = td.vertices.size() / 2;
-
-			td.vertices.insert(td.vertices.end(), vertices.begin(), vertices.end());
-			nodes.clear();
-			run = 1;
 		}
-
-		if (currentIsInner) {
-			innerWays.erase(innerWays.begin());
-			jt = outerWays.begin();
-		}
-		else {
-			outerWays.erase(outerWays.begin());
-			jt = innerWays.begin();
-		}
-
-		currentIsInner = !currentIsInner;
-	}
-
-	char* triswitches = "zpNBQ";
-	for (TriangulationData& td : data)
-	{
-		triangulateio in;
-
-		in.numberofpoints = td.vertices.size() / 2;
-		in.pointlist = td.vertices.data();
-		in.pointmarkerlist = NULL;
 		
-		in.numberofpointattributes = 0;
-		in.numberofpointattributes = NULL;
+		if (valid)
+		{
+			triangulateio in;
 
-		in.numberofholes = td.holes.size() / 2;
-		in.holelist = td.holes.data();
+			in.numberofpoints = td.vertices.size() / 2;
+			in.pointlist = td.vertices.data();
+			in.pointmarkerlist = NULL;
 
-		in.numberofsegments = td.segments.size() / 2;
-		in.segmentlist = td.segments.data();
-		in.segmentmarkerlist = NULL;
+			in.numberofpointattributes = 0;
+			in.numberofpointattributes = NULL;
 
-		in.numberofregions = 0;
-		in.regionlist = NULL;
+			in.numberofholes = td.holes.size() / 2;
+			in.holelist = td.holes.data();
 
-		triangulateio out;
-		out.pointlist = NULL;
-		out.pointmarkerlist = NULL;
-		out.trianglelist = NULL;
-		out.segmentlist = NULL;
-		out.segmentmarkerlist = NULL;
+			in.numberofsegments = td.segments.size() / 2;
+			in.segmentlist = td.segments.data();
+			in.segmentmarkerlist = NULL;
 
-		triangulate(triswitches, &in, &out, NULL);
+			in.numberofregions = 0;
+			in.regionlist = NULL;
 
-		// TODO: memory leak go brrrr
-		polygons.push_back({});
-		for (int i = 0; i < in.numberofpoints * 2; i += 2) {
-			polygons.back().vertices.push_back({ in.pointlist[i], in.pointlist[i + 1] });
-			// polygons.back().vertices.push_back(in.pointlist[i + 1]);
+			triangulateio out;
+			out.pointlist = NULL;
+			out.pointmarkerlist = NULL;
+			out.trianglelist = NULL;
+			out.segmentlist = NULL;
+			out.segmentmarkerlist = NULL;
+
+			triangulate(triSwitches, &in, &out, NULL);
+
+			polygons.push_back({});
+			for (int i = 0; i < in.numberofpoints * 2; i += 2) {
+				polygons.back().vertices.push_back({ in.pointlist[i], in.pointlist[i + 1] });
+				// polygons.back().vertices.push_back(in.pointlist[i + 1]);
+			}
+			for (int i = 0; i < out.numberoftriangles * 3; i++) {
+				polygons.back().indices.push_back(out.trianglelist[i]);
+			}
+			for (int i = 0; i < in.numberofsegments * 2; i++) {
+				polygons.back().segments.push_back(in.segmentlist[i]);
+			}
+
+			trifree(out.trianglelist);
+			trifree(out.segmentlist);
 		}
-		for (int i = 0; i < out.numberoftriangles * 3; i++) {
-			polygons.back().indices.push_back(out.trianglelist[i]);
-		}
-		for (int i = 0; i < in.numberofsegments * 2; i++) {
-			polygons.back().segments.push_back(in.segmentlist[i]);
-		}
-
-		trifree(out.trianglelist);
-		trifree(out.segmentlist);
 	}
-
 
 	// TODO: Make a color map
 
@@ -659,8 +562,16 @@ void Multipolygon::Draw(SDL_Renderer* renderer)
 	if (!visible)
 		return;
 
-	// if (id != 6427823)
-	//	return;
+	//for (const Polygon& polygon : polygons) {
+	//	for (auto it = polygon.vertices.begin(); it != polygon.vertices.end() - 1; it++) {
+	//		thickLineRGBA(renderer,
+	//			it->x, it->y,
+	//			(it+1)->x, (it+1)->y,
+	//			2,
+	//			r, g, b, 255
+	//			);
+	//	}
+	//}
 
 	for (const Polygon& polygon : polygons) {
 		switch(rendering)
@@ -712,4 +623,307 @@ void Multipolygon::Draw(SDL_Renderer* renderer)
 			break;
 		}
 	}
+}
+
+bool Intersect(double p0_x, double p0_y, double p1_x, double p1_y, double p2_x, double p2_y, double p3_x, double p3_y)
+{
+	if ((p0_x == p2_x && p0_y == p2_y) || 
+		(p0_x == p3_x && p0_y == p3_y) ||
+		(p1_x == p2_x && p1_y == p2_y) ||
+		(p1_x == p3_x && p1_y == p3_y)) 
+		return false;
+
+	float s1_x, s1_y, s2_x, s2_y;
+	s1_x = p1_x - p0_x;     s1_y = p1_y - p0_y;
+	s2_x = p3_x - p2_x;     s2_y = p3_y - p2_y;
+
+	float s, t;
+	s = (-s1_y * (p0_x - p2_x) + s1_x * (p0_y - p2_y)) / (-s2_x * s1_y + s1_x * s2_y);
+	t = (s2_x * (p0_y - p2_y) - s2_y * (p0_x - p2_x)) / (-s2_x * s1_y + s1_x * s2_y);
+
+	if (s >= 0 && s <= 1 && t >= 0 && t <= 1)
+	{
+		// Collision detected
+		return 1;
+	}
+
+	return 0; // No collision
+}
+
+bool Intersect(const osmp::Node& p0, const osmp::Node& p1, const osmp::Node& p2, const osmp::Node& p3)
+{
+	return Intersect(p0->lon, p0->lat, p1->lon, p1->lat, p2->lon, p2->lat, p3->lon, p3->lat);
+}
+bool SelfIntersecting(const Ring& ring)
+{
+	struct Segment {
+		osmp::Node p1, p2;
+	};
+
+	// Get all segments
+	std::vector<Segment> segments;
+	for (auto it = ring.nodes.begin(); it != ring.nodes.end(); it++)
+	{
+		if (it == ring.nodes.end() - 1)
+		{
+			segments.push_back({
+				*it, ring.nodes.front()
+				});
+		}
+		else
+		{
+			segments.push_back({
+				*it, *(it + 1)
+				});
+		}
+	}
+
+	// Check for self intersection (O(n^2)...)
+	for (auto it = segments.begin(); it != segments.end(); it++)
+	{
+		for (auto jt = segments.begin(); jt != segments.end(); jt++)
+		{
+			if (it == jt) continue;
+
+			if (Intersect(it->p1, it->p2, jt->p1, jt->p2)) 
+				return true;
+		}
+	}
+
+	return false;
+}
+
+bool BuildRing(Ring& ring, osmp::MemberWays& unassigned, int ringCount)
+{
+	const osmp::MemberWays original = unassigned;
+
+	// RA-2
+	int attempts = 0;
+	ring = Ring{ unassigned[attempts].way->GetNodes(), unassigned[attempts].role == "inner", ringCount };
+	unassigned.erase(unassigned.begin() + attempts);
+
+RA3:
+	// RA-3
+	if (ring.nodes.front() == ring.nodes.back())
+	{
+		if (SelfIntersecting(ring))
+		{
+			unassigned = original;
+			attempts += 1;
+			if (unassigned.size() == attempts)
+				return false;
+
+			ring = Ring{ unassigned[attempts].way->GetNodes(), unassigned[attempts].role == "inner", ringCount };
+			goto RA3;
+		}
+		else
+		{
+			ring.nodes.pop_back();
+			return true;
+		}
+	}
+	else // RA-4
+	{
+		osmp::Node lastNode = ring.nodes.back();
+		for (auto it = unassigned.begin(); it != unassigned.end(); it++)
+		{
+			if (it->way->GetNodes().front() == lastNode)
+			{
+				ring.nodes.insert(ring.nodes.end(), it->way->GetNodes().begin() + 1, it->way->GetNodes().end());
+				unassigned.erase(it);
+				goto RA3;
+			}
+			else if (it->way->GetNodes().back() == lastNode)
+			{
+				ring.nodes.insert(ring.nodes.end(), it->way->GetNodes().rbegin() + 1, it->way->GetNodes().rend());
+				unassigned.erase(it);
+				goto RA3;
+			}
+		}
+
+		// No ring found
+		unassigned = original;
+		return false;
+	}
+}
+
+bool AssignRings(std::vector<Ring>& rings, const osmp::MemberWays& members)
+{
+	// Ring assignment
+	osmp::MemberWays unassigned = members;
+	int ringCount = 0;
+	while (!unassigned.empty())
+	{
+		rings.push_back({});
+		if (!BuildRing(rings.back(), unassigned, ringCount) || rings.size() > members.size())
+			return false;
+
+		ringCount++;
+	}
+
+	return true;
+}
+
+bool cmp(const osmp::Node& a, const osmp::Node& b) 
+{
+	return (a->lon < b->lon);
+}
+
+void FindAllContainedRings(const std::vector<bool>& containmentMatrix, int container, int numRings, std::vector<int>& buffer)
+{
+	buffer.clear();
+	for (int j = 0; j < numRings; j++) {
+		if (containmentMatrix[INDEXOF(container, j, numRings)])
+			buffer.push_back(j);
+	}
+}
+
+void FindAllContainedRingsThatArentContainedByUnusedRings(const std::vector<bool>& containmentMatrix, int container, int numRings, const std::vector<Ring>& unusedRings, std::vector<int>& buffer)
+{
+	FindAllContainedRings(containmentMatrix, container, numRings, buffer);
+
+	for (auto j = buffer.begin(); j != buffer.end(); ) {
+		bool foundRing = false;
+		for (const Ring& ring : unusedRings) {
+			if (containmentMatrix[INDEXOF(ring.index, *j, numRings)]) {
+				foundRing = true;
+				break;
+			}
+		}
+
+		if(foundRing) 
+			j = buffer.erase(j);
+		else
+			++j;
+	}
+}
+
+bool Compare(const Ring& ring, int index) {
+	return (ring.index == index);
+}
+
+int FindUncontainedRing(const std::vector<bool>& containmentMatrix, int rings, const std::vector<Ring>& unusedRings)
+{
+	for (int j = 0; j < rings; j++) {
+		if (std::find_if(unusedRings.begin(), unusedRings.end(), [j](const Ring& ring) { return (ring.index == j); }) == unusedRings.end())
+			continue;
+
+		bool isContained = false;
+		for (int i = 0; i < rings; i++) {
+			if (containmentMatrix[INDEXOF(i, j, rings)])
+			{
+				isContained = true;
+				break;
+			}
+		}
+
+		if (!isContained)
+			return j;
+	}
+
+	return -1;
+}
+
+bool PointInsideRing(const Ring& ring, const osmp::Node& point)
+{
+	const osmp::Node& rightestNode = *(std::max_element(ring.nodes.begin(), ring.nodes.end(), cmp));
+	
+	int intersections = 0;
+	for (auto it = ring.nodes.begin(); it != ring.nodes.end(); it++)
+	{
+		const osmp::Node& jt = ((it == ring.nodes.end() - 1) ? ring.nodes.front() : *(it + 1));
+		intersections += Intersect((*it)->GetLon(), (*it)->GetLat(),
+			jt->GetLon(), jt->GetLat(), 
+			point->GetLon(), point->GetLat(), 
+			rightestNode->GetLon() + 1.0f, point->GetLat()
+		);
+	}
+
+	return (intersections % 2 != 0);
+}
+
+bool IsRingContained(const Ring& r1, const Ring& r2)
+{
+	// Test if any line segments are intersecting
+	// I don't think this is needed actually, the rings shouldn't overlap so testing if a node is inside is enough!
+	// Gonna leave this here tho in case we *do* need to see if a ring is completely contained
+	//for (auto it = r1.nodes.begin(); it != r1.nodes.end(); it++)
+	//{
+	//	for (auto jt = r2.nodes.begin(); jt != r2.nodes.end(); jt++)
+	//	{
+	//		osmp::Node n1 = ((it == r1.nodes.end() - 1) ? r1.nodes.front() : *(it + 1));
+	//		osmp::Node n2 = ((jt == r2.nodes.end() - 1) ? r2.nodes.front() : *(jt + 1));
+
+	//		if (Intersect(*it, n1, *jt, n2))
+	//			return false;
+	//	}
+	//}
+
+	if (PointInsideRing(r1, r2.nodes.front()))
+		return true;
+
+	return false;
+}
+
+bool GroupRings(std::vector<RingGroup>& ringGroups, std::vector<Ring>& rings)
+{
+	const std::vector<Ring> original = rings;
+
+	//RG-1
+	int ringNum = rings.size();
+	std::vector<bool> containmentMatrix(ringNum * ringNum);
+
+	for (int i = 0; i < ringNum; i++)
+	{
+		for (int j = 0; j < ringNum; j++)
+		{
+			if (i == j) {
+				containmentMatrix[INDEXOF(i, j, ringNum)] = false;
+				continue;
+			}
+
+			containmentMatrix[INDEXOF(i, j, ringNum)] = IsRingContained(rings[i], rings[j]);
+		}
+	}
+	
+	// RG-2 / RG-3
+	while (!rings.empty())	// TODO: Make this time out
+	{
+		int uncontainedRing = FindUncontainedRing(containmentMatrix, ringNum, rings);
+		if (uncontainedRing == -1) {
+			std::cerr << "Failed to find uncontained ring in step RG-2" << std::endl;
+			return false;
+		}
+		auto it = std::find_if(rings.begin(), rings.end(), [uncontainedRing](const Ring& ring) { return (ring.index == uncontainedRing); });
+		if (it == rings.end())
+		{
+			std::cerr << "Uncontained Ring is out of range" << std::endl;
+			return false;
+		}
+
+		ringGroups.push_back({ {*it} });
+		rings.erase(it);
+
+
+		// RG-4
+		std::vector<int> containedRings;
+		FindAllContainedRingsThatArentContainedByUnusedRings(containmentMatrix, uncontainedRing, ringNum, rings, containedRings);
+
+		for (auto it = rings.begin(); it != rings.end(); ) {
+			if (std::find(containedRings.begin(), containedRings.end(), it->index) != containedRings.end()) {
+				ringGroups.back().rings.push_back(*it);
+				ringGroups.back().rings.back().hole = true;
+				it = rings.erase(it);
+			}
+			else {
+				it++;
+			}
+		}
+
+		// TODO: RG-5 / RG-6 will be left out for now as they're optional. 
+		// At least RG-6 should be implemented because not doing so might crash Triangle
+
+	}
+
+	return true;
 }

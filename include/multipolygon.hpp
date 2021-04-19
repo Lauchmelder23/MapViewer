@@ -10,7 +10,7 @@ struct SDL_Renderer;
 class Multipolygon
 {
 public:
-	Multipolygon(const std::shared_ptr<osmp::Relation>& relation, int width, int height, osmp::Bounds bounds);
+	Multipolygon(const osmp::Relation& relation, int width, int height, const osmp::Bounds& bounds);
 
 	void SetColor(int r, int g, int b);
 	void Draw(SDL_Renderer* renderer);

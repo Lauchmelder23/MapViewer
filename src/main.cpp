@@ -44,14 +44,14 @@ int main(int argc, char** argv)
 	int windowWidth = windowHeight * aspectRatio;
 
 	// Fetch all the ways
-	std::vector<std::shared_ptr<osmp::Way>> ways = obj->GetWays();
+	osmp::Ways ways = obj->GetWays();
 
 	// Turn them into renderable ways by mapping the global coordinates to screen coordinates (do this smarter in the future pls)
 	std::vector<Area> buildings;
 	std::vector<Highway> highways;
-	for (std::shared_ptr<osmp::Way> way : ways)
+	for (osmp::Way way : ways)
 	{
-		const std::vector<std::shared_ptr<osmp::Node>>& nodes = way->GetNodes();
+		const osmp::Nodes& nodes = way->GetNodes();
 		std::string highwayVal = way->GetTag("highway");
 		std::string railwayVal = way->GetTag("railway");
 		if (way->area)
@@ -119,9 +119,9 @@ int main(int argc, char** argv)
 	}
 
 	// Fetch all relations
-	std::vector<std::shared_ptr<osmp::Relation>> relations = obj->GetRelations();
+	osmp::Relations relations = obj->GetRelations();
 	std::vector<Multipolygon> multipolygons;
-	for (const std::shared_ptr<osmp::Relation>& relation : relations)
+	for (const osmp::Relation& relation : relations)
 	{
 		if (relation->GetRelationType() == "multipolygon" && !relation->HasNullMembers())
 		{
@@ -174,14 +174,14 @@ int main(int argc, char** argv)
 		SDL_SetRenderDrawColor(renderer, 240, 240, 250, 255);
 		SDL_RenderClear(renderer);
 		
-		for (Multipolygon& multipolygon : multipolygons) {
+		 for (Multipolygon& multipolygon : multipolygons) {
 			multipolygon.Draw(renderer);
-		}
+		 }
 
-		//for (Area& area : buildings)
-		//{
-		//	filledPolygonRGBA(renderer, area.x, area.y, area.length, area.r, area.g, area.b, 255);
-		//}
+		for (Area& area : buildings)
+		{
+			filledPolygonRGBA(renderer, area.x, area.y, area.length, area.r, area.g, area.b, 255);
+		}
 
 		for (Highway& highway : highways)
 		{
