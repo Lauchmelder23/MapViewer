@@ -23,6 +23,8 @@ struct TriangulationData {
 struct Ring {
 	osmp::Nodes nodes;
 	bool inner;
+	int index;
+	bool hole = false;
 };
 
 struct RingGroup {
@@ -40,12 +42,15 @@ inline double Map(double A, double B, double a, double b, double x)
 [[nodiscard]] bool Intersect(const osmp::Node& p1, const osmp::Node& p2, const osmp::Node& q1, const osmp::Node& q2);
 [[nodiscard]] bool SelfIntersecting(const Ring& ring);
 
-[[nodiscard]] bool BuildRing(Ring& ring, osmp::MemberWays& unassigned);
+[[nodiscard]] bool BuildRing(Ring& ring, osmp::MemberWays& unassigned, int ringCount);
 [[nodiscard]] bool AssignRings(std::vector<Ring>& rings, const osmp::MemberWays& members);
 
+void FindAllContainedRings(const std::vector<bool>& containmentMatrix, int container, int numRings, std::vector<int>& buffer);
+void FindAllContainedRingsThatArentContainedByUnusedRings(const std::vector<bool>& containmentMatrix, int container, int numRings, const std::vector<Ring>& unusedRings, std::vector<int>& buffer);
+[[nodiscard]] int FindUncontainedRing(const std::vector<bool>& containmentMatrix, int rings, const std::vector<Ring>& unusedRings);
 [[nodiscard]] bool PointInsideRing(const Ring& ring, const osmp::Node& point);
 [[nodiscard]] bool IsRingContained(const Ring& r1, const Ring& r2);
-[[nodiscard]] bool GroupRings(std::vector<RingGroup>& ringGroup, const std::vector<Ring>& rings);
+[[nodiscard]] bool GroupRings(std::vector<RingGroup>& ringGroup, std::vector<Ring>& rings);
 
 Multipolygon::Multipolygon(const osmp::Relation& relation, int width, int height, const osmp::Bounds& bounds) :
 	r(255), g(0), b(255), visible(true), rendering(RenderType::FILL), id(relation->id)
@@ -63,22 +68,110 @@ Multipolygon::Multipolygon(const osmp::Relation& relation, int width, int height
 		std::cerr << "Assigning rings has failed for multipolygon " << id << std::endl;
 	}
 
-	std::vector<RingGroup> ringGroup;
-	GroupRings(ringGroup, rings);
+	std::vector<RingGroup> ringGroups;
+	GroupRings(ringGroups, rings);
 
-	// TODO: Temporarily render rings:
-	for (const Ring& ring : rings)
+	char* triSwitches = "zpNBQ";
+	for (const RingGroup& ringGroup : ringGroups) 
 	{
-		Polygon polygon;
-		for (const osmp::Node& node : ring.nodes)
+		TriangulationData td;
+
+		bool valid = true;
+		for (const Ring& ring : ringGroup.rings)
 		{
-			polygon.vertices.push_back({
-				Map(bounds.minlon, bounds.maxlon, 0, width, node->lon),
-				height - Map(bounds.minlat, bounds.maxlat, 0, height, node->lat)
-			});
+			std::vector<REAL> vertices;
+			for (const osmp::Node& node : ring.nodes) {
+				double x = Map(bounds.minlon, bounds.maxlon, 0, width, node->lon);
+				double y = height - Map(bounds.minlat, bounds.maxlat, 0, height, node->lat);
+
+				vertices.push_back(x);
+				vertices.push_back(y);
+			}
+
+			int segment = td.vertices.size() / 2;
+			for (int i = 0; i < vertices.size() / 2; i += 1) {
+				td.segments.push_back(segment + i);
+				td.segments.push_back(segment + i + 1);
+			}
+			td.segments.back() = td.vertices.size() / 2;
+
+			td.vertices.insert(td.vertices.end(), vertices.begin(), vertices.end());
+
+			if (ring.hole) {
+				double holeX = 0.0f;
+				double holeY = 0.0f;
+				for (int i = 0; i < vertices.size(); i += 2)
+				{
+					holeX += vertices[i];
+					holeY += vertices[i + 1];
+				}
+
+				holeX /= vertices.size() / 2;
+				holeY /= vertices.size() / 2;
+
+				td.holes.push_back(holeX);
+				td.holes.push_back(holeY);
+			}
 		}
 
-		polygons.push_back(polygon);
+		// TODO: Find better way to check for duplicates
+		for (int i = 0; i < td.vertices.size(); i += 2) {
+			for (int j = 0; j < td.vertices.size(); j += 2) {
+				if (i == j) continue;
+
+				if (td.vertices[i] == td.vertices[j] && td.vertices[i + 1] == td.vertices[j + 1])
+				{
+					valid = false;
+					break;
+				}
+			}
+		}
+		
+		if (valid)
+		{
+			triangulateio in;
+
+			in.numberofpoints = td.vertices.size() / 2;
+			in.pointlist = td.vertices.data();
+			in.pointmarkerlist = NULL;
+
+			in.numberofpointattributes = 0;
+			in.numberofpointattributes = NULL;
+
+			in.numberofholes = td.holes.size() / 2;
+			in.holelist = td.holes.data();
+
+			in.numberofsegments = td.segments.size() / 2;
+			in.segmentlist = td.segments.data();
+			in.segmentmarkerlist = NULL;
+
+			in.numberofregions = 0;
+			in.regionlist = NULL;
+
+			triangulateio out;
+			out.pointlist = NULL;
+			out.pointmarkerlist = NULL;
+			out.trianglelist = NULL;
+			out.segmentlist = NULL;
+			out.segmentmarkerlist = NULL;
+
+			triangulate(triSwitches, &in, &out, NULL);
+
+			polygons.push_back({});
+			for (int i = 0; i < in.numberofpoints * 2; i += 2) {
+				polygons.back().vertices.push_back({ in.pointlist[i], in.pointlist[i + 1] });
+				// polygons.back().vertices.push_back(in.pointlist[i + 1]);
+			}
+			for (int i = 0; i < out.numberoftriangles * 3; i++) {
+				polygons.back().indices.push_back(out.trianglelist[i]);
+			}
+			for (int i = 0; i < in.numberofsegments * 2; i++) {
+				polygons.back().segments.push_back(in.segmentlist[i]);
+			}
+
+			trifree(out.trianglelist);
+			trifree(out.segmentlist);
+		}
 	}
 
 	// TODO: Make a color map
@@ -469,67 +562,67 @@ void Multipolygon::Draw(SDL_Renderer* renderer)
 	if (!visible)
 		return;
 
-	for (const Polygon& polygon : polygons) {
-		for (auto it = polygon.vertices.begin(); it != polygon.vertices.end() - 1; it++) {
-			thickLineRGBA(renderer,
-				it->x, it->y,
-				(it+1)->x, (it+1)->y,
-				2,
-				r, g, b, 255
-				);
-		}
-	}
-
 	//for (const Polygon& polygon : polygons) {
-	//	switch(rendering)
-	//	{
-	//	case RenderType::FILL:
-	//		for (int i = 0; i < polygon.indices.size(); i += 3)	// Be a graphics card
-	//		{
-
-	//			filledTrigonRGBA(renderer,
-	//				polygon.vertices[polygon.indices[i + 0]].x, polygon.vertices[polygon.indices[i + 0]].y,
-	//				polygon.vertices[polygon.indices[i + 1]].x, polygon.vertices[polygon.indices[i + 1]].y,
-	//				polygon.vertices[polygon.indices[i + 2]].x, polygon.vertices[polygon.indices[i + 2]].y,
-	//				r, g, b, 255
+	//	for (auto it = polygon.vertices.begin(); it != polygon.vertices.end() - 1; it++) {
+	//		thickLineRGBA(renderer,
+	//			it->x, it->y,
+	//			(it+1)->x, (it+1)->y,
+	//			2,
+	//			r, g, b, 255
 	//			);
-	//		}
-	//		break;
-
-	//	case RenderType::OUTLINE:
-	//		for(int i = 0; i < polygon.segments.size(); i += 2)
-	//		{
-	//			thickLineRGBA(renderer,
-	//				polygon.vertices[polygon.segments[i + 0]].x, polygon.vertices[polygon.segments[i + 0]].y,
-	//				polygon.vertices[polygon.segments[i + 1]].x, polygon.vertices[polygon.segments[i + 1]].y,
-	//				5, r, g, b, 255
-	//			);
-	//		}
-	//		break;
-
-	//	case RenderType::INDOOR:
-	//		for (int i = 0; i < polygon.indices.size(); i += 3)	// Be a graphics card
-	//		{
-
-	//			filledTrigonRGBA(renderer,
-	//				polygon.vertices[polygon.indices[i + 0]].x, polygon.vertices[polygon.indices[i + 0]].y,
-	//				polygon.vertices[polygon.indices[i + 1]].x, polygon.vertices[polygon.indices[i + 1]].y,
-	//				polygon.vertices[polygon.indices[i + 2]].x, polygon.vertices[polygon.indices[i + 2]].y,
-	//				r, g, b, 255
-	//			);
-	//		}
-
-	//		for (int i = 0; i < polygon.segments.size(); i += 2)
-	//		{
-	//			lineRGBA(renderer,
-	//				polygon.vertices[polygon.segments[i + 0]].x, polygon.vertices[polygon.segments[i + 0]].y,
-	//				polygon.vertices[polygon.segments[i + 1]].x, polygon.vertices[polygon.segments[i + 1]].y,
-	//				10, 10, 15, 255
-	//			);
-	//		}
-	//		break;
 	//	}
 	//}
+
+	for (const Polygon& polygon : polygons) {
+		switch(rendering)
+		{
+		case RenderType::FILL:
+			for (int i = 0; i < polygon.indices.size(); i += 3)	// Be a graphics card
+			{
+
+				filledTrigonRGBA(renderer,
+					polygon.vertices[polygon.indices[i + 0]].x, polygon.vertices[polygon.indices[i + 0]].y,
+					polygon.vertices[polygon.indices[i + 1]].x, polygon.vertices[polygon.indices[i + 1]].y,
+					polygon.vertices[polygon.indices[i + 2]].x, polygon.vertices[polygon.indices[i + 2]].y,
+					r, g, b, 255
+				);
+			}
+			break;
+
+		case RenderType::OUTLINE:
+			for(int i = 0; i < polygon.segments.size(); i += 2)
+			{
+				thickLineRGBA(renderer,
+					polygon.vertices[polygon.segments[i + 0]].x, polygon.vertices[polygon.segments[i + 0]].y,
+					polygon.vertices[polygon.segments[i + 1]].x, polygon.vertices[polygon.segments[i + 1]].y,
+					5, r, g, b, 255
+				);
+			}
+			break;
+
+		case RenderType::INDOOR:
+			for (int i = 0; i < polygon.indices.size(); i += 3)	// Be a graphics card
+			{
+
+				filledTrigonRGBA(renderer,
+					polygon.vertices[polygon.indices[i + 0]].x, polygon.vertices[polygon.indices[i + 0]].y,
+					polygon.vertices[polygon.indices[i + 1]].x, polygon.vertices[polygon.indices[i + 1]].y,
+					polygon.vertices[polygon.indices[i + 2]].x, polygon.vertices[polygon.indices[i + 2]].y,
+					r, g, b, 255
+				);
+			}
+
+			for (int i = 0; i < polygon.segments.size(); i += 2)
+			{
+				lineRGBA(renderer,
+					polygon.vertices[polygon.segments[i + 0]].x, polygon.vertices[polygon.segments[i + 0]].y,
+					polygon.vertices[polygon.segments[i + 1]].x, polygon.vertices[polygon.segments[i + 1]].y,
+					10, 10, 15, 255
+				);
+			}
+			break;
+		}
+	}
 }
 
 bool Intersect(double p0_x, double p0_y, double p1_x, double p1_y, double p2_x, double p2_y, double p3_x, double p3_y)
@@ -600,13 +693,13 @@ bool SelfIntersecting(const Ring& ring)
 	return false;
 }
 
-bool BuildRing(Ring& ring, osmp::MemberWays& unassigned)
+bool BuildRing(Ring& ring, osmp::MemberWays& unassigned, int ringCount)
 {
 	const osmp::MemberWays original = unassigned;
 
 	// RA-2
 	int attempts = 0;
-	ring = Ring{ unassigned[attempts].way->GetNodes(), unassigned[attempts].role == "inner" };
+	ring = Ring{ unassigned[attempts].way->GetNodes(), unassigned[attempts].role == "inner", ringCount };
 	unassigned.erase(unassigned.begin() + attempts);
 
 RA3:
@@ -620,7 +713,7 @@ RA3:
 			if (unassigned.size() == attempts)
 				return false;
 
-			ring = Ring{ unassigned[attempts].way->GetNodes(), unassigned[attempts].role == "inner" };
+			ring = Ring{ unassigned[attempts].way->GetNodes(), unassigned[attempts].role == "inner", ringCount };
 			goto RA3;
 		}
 		else
@@ -658,11 +751,14 @@ bool AssignRings(std::vector<Ring>& rings, const osmp::MemberWays& members)
 {
 	// Ring assignment
 	osmp::MemberWays unassigned = members;
+	int ringCount = 0;
 	while (!unassigned.empty())
 	{
 		rings.push_back({});
-		if (!BuildRing(rings.back(), unassigned) || rings.size() > members.size())
+		if (!BuildRing(rings.back(), unassigned, ringCount) || rings.size() > members.size())
 			return false;
+
+		ringCount++;
 	}
 
 	return true;
@@ -671,6 +767,61 @@ bool AssignRings(std::vector<Ring>& rings, const osmp::MemberWays& members)
 bool cmp(const osmp::Node& a, const osmp::Node& b) 
 {
 	return (a->lon < b->lon);
+}
+
+void FindAllContainedRings(const std::vector<bool>& containmentMatrix, int container, int numRings, std::vector<int>& buffer)
+{
+	buffer.clear();
+	for (int j = 0; j < numRings; j++) {
+		if (containmentMatrix[INDEXOF(container, j, numRings)])
+			buffer.push_back(j);
+	}
+}
+
+void FindAllContainedRingsThatArentContainedByUnusedRings(const std::vector<bool>& containmentMatrix, int container, int numRings, const std::vector<Ring>& unusedRings, std::vector<int>& buffer)
+{
+	FindAllContainedRings(containmentMatrix, container, numRings, buffer);
+
+	for (auto j = buffer.begin(); j != buffer.end(); ) {
+		bool foundRing = false;
+		for (const Ring& ring : unusedRings) {
+			if (containmentMatrix[INDEXOF(ring.index, *j, numRings)]) {
+				foundRing = true;
+				break;
+			}
+		}
+
+		if(foundRing) 
+			j = buffer.erase(j);
+		else
+			++j;
+	}
+}
+
+bool Compare(const Ring& ring, int index) {
+	return (ring.index == index);
+}
+
+int FindUncontainedRing(const std::vector<bool>& containmentMatrix, int rings, const std::vector<Ring>& unusedRings)
+{
+	for (int j = 0; j < rings; j++) {
+		if (std::find_if(unusedRings.begin(), unusedRings.end(), [j](const Ring& ring) { return (ring.index == j); }) == unusedRings.end())
+			continue;
+
+		bool isContained = false;
+		for (int i = 0; i < rings; i++) {
+			if (containmentMatrix[INDEXOF(i, j, rings)])
+			{
+				isContained = true;
+				break;
+			}
+		}
+
+		if (!isContained)
+			return j;
+	}
+
+	return -1;
 }
 
 bool PointInsideRing(const Ring& ring, const osmp::Node& point)
@@ -714,8 +865,10 @@ bool IsRingContained(const Ring& r1, const Ring& r2)
 	return false;
 }
 
-bool GroupRings(std::vector<RingGroup>& ringGroups, const std::vector<Ring>& rings)
+bool GroupRings(std::vector<RingGroup>& ringGroups, std::vector<Ring>& rings)
 {
+	const std::vector<Ring> original = rings;
+
 	//RG-1
 	int ringNum = rings.size();
 	std::vector<bool> containmentMatrix(ringNum * ringNum);
@@ -732,7 +885,45 @@ bool GroupRings(std::vector<RingGroup>& ringGroups, const std::vector<Ring>& rin
 			containmentMatrix[INDEXOF(i, j, ringNum)] = IsRingContained(rings[i], rings[j]);
 		}
 	}
-	__debugbreak();
+	
+	// RG-2 / RG-3
+	while (!rings.empty())	// TODO: Make this time out
+	{
+		int uncontainedRing = FindUncontainedRing(containmentMatrix, ringNum, rings);
+		if (uncontainedRing == -1) {
+			std::cerr << "Failed to find uncontained ring in step RG-2" << std::endl;
+			return false;
+		}
+		auto it = std::find_if(rings.begin(), rings.end(), [uncontainedRing](const Ring& ring) { return (ring.index == uncontainedRing); });
+		if (it == rings.end())
+		{
+			std::cerr << "Uncontained Ring is out of range" << std::endl;
+			return false;
+		}
+
+		ringGroups.push_back({ {*it} });
+		rings.erase(it);
+
+
+		// RG-4
+		std::vector<int> containedRings;
+		FindAllContainedRingsThatArentContainedByUnusedRings(containmentMatrix, uncontainedRing, ringNum, rings, containedRings);
+
+		for (auto it = rings.begin(); it != rings.end(); ) {
+			if (std::find(containedRings.begin(), containedRings.end(), it->index) != containedRings.end()) {
+				ringGroups.back().rings.push_back(*it);
+				ringGroups.back().rings.back().hole = true;
+				it = rings.erase(it);
+			}
+			else {
+				it++;
+			}
+		}
+
+		// TODO: RG-5 / RG-6 will be left out for now as they're optional. 
+		// At least RG-6 should be implemented because not doing so might crash Triangle
+
+	}
 
 	return true;
 }
