@@ -4,43 +4,39 @@
 #include <algorithm>
 
 #include <osmp.hpp>
-#include <SDL.h>
-#include <SDL2_gfxPrimitives.h>
-#include <../include/multipolygon.hpp>
+#include "multipolygon.hpp"
+#include "Window.hpp"
 
 // Map values from one interval [A, B] to another [a, b]
 inline float Map(float A, float B, float a, float b, float x);
 
 typedef struct sArea
 {
-	size_t length;
-	Uint8 r = 0;
-	Uint8 g = 0;
-	Uint8 b = 10;
-	Sint16* x;
-	Sint16* y;
+	size_t   length;
+	uint8_t  r = 0;
+	uint8_t  g = 0;
+	uint8_t  b = 10;
+	int16_t* x;
+	int16_t* y;
 } Area;
 
 typedef struct sHighway
 {
 	size_t length;
-	Uint8 r, g, b;
-	SDL_FPoint* points;
+	uint8_t r, g, b;
+	Vector2f* points;
 } Highway;
 
 int main(int argc, char** argv)
 {
-	SDL_Init(SDL_INIT_VIDEO);
-	// Load map data and calculate window size
-	SDL_DisplayMode DM;
-	SDL_GetCurrentDisplayMode(0, &DM);
+	Window::Init();
 
 	std::cout << "Loading and parsing OSM XML file. This might take a bit..." << std::flush;
 	osmp::Object* obj = new osmp::Object("leipzig.osm");
 	std::cout << "Done!" << std::endl;
 	osmp::Bounds bounds = obj->bounds;
 	float aspectRatio = (float)(bounds.maxlon - bounds.minlon) / (float)(bounds.maxlat - bounds.minlat);
-	int windowHeight = DM.h - 100;
+	int windowHeight = 900 - 100;
 	int windowWidth = windowHeight * aspectRatio;
 
 	// Fetch all the ways
@@ -63,8 +59,8 @@ int main(int argc, char** argv)
 
 			Area area;
 			area.length = nodes.size();
-			area.x = new Sint16[area.length];
-			area.y = new Sint16[area.length];
+			area.x = new int16_t[area.length];
+			area.y = new int16_t[area.length];
 
 			area.r = 150;
 			area.g = 150;
@@ -82,7 +78,7 @@ int main(int argc, char** argv)
 		{
 			Highway highway;
 			highway.length = nodes.size();
-			highway.points = new SDL_FPoint[highway.length];
+			highway.points = new Vector2f[highway.length];
 
 			for (int i = 0; i < highway.length; i++)
 			{
@@ -104,7 +100,7 @@ int main(int argc, char** argv)
 		{
 			Highway railway;
 			railway.length = nodes.size();
-			railway.points = new SDL_FPoint[railway.length];
+			railway.points = new Vector2f[railway.length];
 
 			for (int i = 0; i < railway.length; i++)
 			{
@@ -139,65 +135,39 @@ int main(int argc, char** argv)
 	delete obj;
 
 	// Create Window + Renderer
-	SDL_Window* window = SDL_CreateWindow("MapViewer", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, windowWidth, windowHeight, SDL_WINDOW_SHOWN);
-	if (window == nullptr)
-	{
-		std::cerr << "Failed to create Window" << std::endl;
-		return 1;
-	}
-
-	SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_SOFTWARE);
-	if (renderer == nullptr)
-	{
-		std::cerr << "Failed to create renderer" << std::endl;
-		return 1;
-	}
+	Window window(Vector2i{ 1280, 800 }, "Map Viewer");
 
 	// Window loop
-	bool isOpen = true;
-	SDL_Event e;
-	while (isOpen)
+	while ((bool)window)
 	{
-		while (SDL_PollEvent(&e))
-		{
-			if (e.type == SDL_WINDOWEVENT)
-			{
-				switch (e.window.event)
-				{
-				case SDL_WINDOWEVENT_CLOSE:
-					isOpen = false;
-					break;
-				}
-			}
-		}
+		Window::PollEvents();
 
-		SDL_SetRenderDrawColor(renderer, 240, 240, 250, 255);
-		SDL_RenderClear(renderer);
+		window.Clear(0.2f, 0.0f, 0.2f, 1.0f);
 		
 		 for (Multipolygon& multipolygon : multipolygons) {
-			multipolygon.Draw(renderer);
+			// multipolygon.Draw(renderer);
 		 }
 
 		for (Area& area : buildings)
 		{
-			filledPolygonRGBA(renderer, area.x, area.y, area.length, area.r, area.g, area.b, 255);
+			// filledPolygonRGBA(renderer, area.x, area.y, area.length, area.r, area.g, area.b, 255);
 		}
 
 		for (Highway& highway : highways)
 		{
-			SDL_SetRenderDrawColor(renderer, highway.r, highway.g, highway.b, 255);
-			SDL_RenderDrawLinesF(renderer, highway.points, highway.length);
+			// SDL_SetRenderDrawColor(renderer, highway.r, highway.g, highway.b, 255);
+			// SDL_RenderDrawLinesF(renderer, highway.points, highway.length);
 		}
 		
 
-		SDL_RenderPresent(renderer);
+		window.SwapBuffers();
 	}
 
 	// Cleanup time
-	SDL_DestroyRenderer(renderer);
-	SDL_DestroyWindow(window);
+	// SDL_DestroyRenderer(renderer);
+	// SDL_DestroyWindow(window);
 
-	SDL_Quit();
+	// SDL_Quit();
 
 	for (Area& area : buildings) {
 		delete[] area.x;

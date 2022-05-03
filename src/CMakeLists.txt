@@ -3,10 +3,11 @@ cmake_minimum_required(VERSION 3.10)
 add_executable(mapviewer
     main.cpp
     multipolygon.cpp
+	Window.cpp
 )
 
-target_include_directories(mapviewer PRIVATE 
-	osmp 
+target_link_libraries(mapviewer PRIVATE 
+	osmparser
 	triangle
 	glfw
     glad

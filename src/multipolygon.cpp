@@ -1,4 +1,4 @@
-#include "..\include\multipolygon.hpp"
+#include "multipolygon.hpp"
 
 #include <vector>
 #include <array>
@@ -7,10 +7,7 @@
 #include <iostream>
 
 #include <triangle.h>
-#include <osmway.hpp>
-#include <osmnode.hpp>
-#include <SDL.h>
-#include <SDL2_gfxPrimitives.h>
+#include <osmp.hpp>
 
 #define BREAKIF(x) if(relation->id == x) __debugbreak()
 #define INDEXOF(x, y, n) (y * n + x)
@@ -38,19 +35,19 @@ inline double Map(double A, double B, double a, double b, double x)
 }
 
 // TODO: Implement better algorithm
-[[nodiscard]] bool Intersect(double p1_x, double p1_y, double p2_x, double p2_y, double q1_x, double q1_y, double q2_x, double q2_y);
-[[nodiscard]] bool Intersect(const osmp::Node& p1, const osmp::Node& p2, const osmp::Node& q1, const osmp::Node& q2);
-[[nodiscard]] bool SelfIntersecting(const Ring& ring);
+bool Intersect(double p1_x, double p1_y, double p2_x, double p2_y, double q1_x, double q1_y, double q2_x, double q2_y);
+bool Intersect(const osmp::Node& p1, const osmp::Node& p2, const osmp::Node& q1, const osmp::Node& q2);
+bool SelfIntersecting(const Ring& ring);
 
-[[nodiscard]] bool BuildRing(Ring& ring, osmp::MemberWays& unassigned, int ringCount);
-[[nodiscard]] bool AssignRings(std::vector<Ring>& rings, const osmp::MemberWays& members);
+bool BuildRing(Ring& ring, osmp::MemberWays& unassigned, int ringCount);
+bool AssignRings(std::vector<Ring>& rings, const osmp::MemberWays& members);
 
 void FindAllContainedRings(const std::vector<bool>& containmentMatrix, int container, int numRings, std::vector<int>& buffer);
 void FindAllContainedRingsThatArentContainedByUnusedRings(const std::vector<bool>& containmentMatrix, int container, int numRings, const std::vector<Ring>& unusedRings, std::vector<int>& buffer);
-[[nodiscard]] int FindUncontainedRing(const std::vector<bool>& containmentMatrix, int rings, const std::vector<Ring>& unusedRings);
-[[nodiscard]] bool PointInsideRing(const Ring& ring, const osmp::Node& point);
-[[nodiscard]] bool IsRingContained(const Ring& r1, const Ring& r2);
-[[nodiscard]] bool GroupRings(std::vector<RingGroup>& ringGroup, std::vector<Ring>& rings);
+int  FindUncontainedRing(const std::vector<bool>& containmentMatrix, int rings, const std::vector<Ring>& unusedRings);
+bool PointInsideRing(const Ring& ring, const osmp::Node& point);
+bool IsRingContained(const Ring& r1, const Ring& r2);
+bool GroupRings(std::vector<RingGroup>& ringGroup, std::vector<Ring>& rings);
 
 Multipolygon::Multipolygon(const osmp::Relation& relation, int width, int height, const osmp::Bounds& bounds) :
 	r(255), g(0), b(255), visible(true), rendering(RenderType::FILL), id(relation->id)
@@ -557,7 +554,7 @@ void Multipolygon::SetColor(int r, int g, int b)
 	this->b = b;
 }
 
-void Multipolygon::Draw(SDL_Renderer* renderer)
+void Multipolygon::Draw()
 {
 	if (!visible)
 		return;
@@ -580,23 +577,23 @@ void Multipolygon::Draw(SDL_Renderer* renderer)
 			for (int i = 0; i < polygon.indices.size(); i += 3)	// Be a graphics card
 			{
 
-				filledTrigonRGBA(renderer,
+				/*filledTrigonRGBA(renderer,
 					polygon.vertices[polygon.indices[i + 0]].x, polygon.vertices[polygon.indices[i + 0]].y,
 					polygon.vertices[polygon.indices[i + 1]].x, polygon.vertices[polygon.indices[i + 1]].y,
 					polygon.vertices[polygon.indices[i + 2]].x, polygon.vertices[polygon.indices[i + 2]].y,
 					r, g, b, 255
-				);
+				);*/
 			}
 			break;
 
 		case RenderType::OUTLINE:
 			for(int i = 0; i < polygon.segments.size(); i += 2)
 			{
-				thickLineRGBA(renderer,
+				/*thickLineRGBA(renderer,
 					polygon.vertices[polygon.segments[i + 0]].x, polygon.vertices[polygon.segments[i + 0]].y,
 					polygon.vertices[polygon.segments[i + 1]].x, polygon.vertices[polygon.segments[i + 1]].y,
 					5, r, g, b, 255
-				);
+				);*/
 			}
 			break;
 
@@ -604,21 +601,21 @@ void Multipolygon::Draw(SDL_Renderer* renderer)
 			for (int i = 0; i < polygon.indices.size(); i += 3)	// Be a graphics card
 			{
 
-				filledTrigonRGBA(renderer,
+				/*filledTrigonRGBA(renderer,
 					polygon.vertices[polygon.indices[i + 0]].x, polygon.vertices[polygon.indices[i + 0]].y,
 					polygon.vertices[polygon.indices[i + 1]].x, polygon.vertices[polygon.indices[i + 1]].y,
 					polygon.vertices[polygon.indices[i + 2]].x, polygon.vertices[polygon.indices[i + 2]].y,
 					r, g, b, 255
-				);
+				);*/
 			}
 
 			for (int i = 0; i < polygon.segments.size(); i += 2)
 			{
-				lineRGBA(renderer,
+				/*lineRGBA(renderer,
 					polygon.vertices[polygon.segments[i + 0]].x, polygon.vertices[polygon.segments[i + 0]].y,
 					polygon.vertices[polygon.segments[i + 1]].x, polygon.vertices[polygon.segments[i + 1]].y,
 					10, 10, 15, 255
-				);
+				);*/
 			}
 			break;
 		}

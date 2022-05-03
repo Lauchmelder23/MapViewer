@@ -2,10 +2,7 @@
 
 #include <memory>
 
-#include <osmrelation.hpp>
-
-struct SDL_FPoint;
-struct SDL_Renderer;
+#include <osmp.hpp>
 
 class Multipolygon
 {
@@ -13,7 +10,7 @@ public:
 	Multipolygon(const osmp::Relation& relation, int width, int height, const osmp::Bounds& bounds);
 
 	void SetColor(int r, int g, int b);
-	void Draw(SDL_Renderer* renderer);
+	void Draw();
 
 	bool operator < (const Multipolygon& other) const {
 		return (rendering < other.rendering);
