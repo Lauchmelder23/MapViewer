@@ -1,3 +1,6 @@
 [submodule "lib/osmparser"]
-	path = lib/osmparser
+	path = vendor/osmparser
 	url = https://github.com/Lauchmelder23/OSMParser
+[submodule "vendor/glfw"]
+	path = vendor/glfw
+	url = git@github.com:glfw/glfw.git
