@@ -1,4 +1,4 @@
-#include "multipolygon.hpp"
+#include "Multipolygon.hpp"
 
 #include <vector>
 #include <array>

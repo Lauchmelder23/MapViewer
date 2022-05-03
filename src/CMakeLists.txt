@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.10)
 
 add_executable(mapviewer
     main.cpp
-    multipolygon.cpp
+    Multipolygon.cpp
 	Window.cpp
 )
 
